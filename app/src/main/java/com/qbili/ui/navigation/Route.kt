@@ -49,6 +49,7 @@ object Route {
     const val FAVORITES = "favorites"
     const val WATCH_LATER = "watchLater"
     const val SETTINGS = "settings"
+    const val ABOUT = "settings/about"
     const val PUSH_SETTINGS = "settings/push"
     fun buildPushFilter(group: RecommendationFilterGroup) = "$PUSH_SETTINGS/${group.key}"
 }

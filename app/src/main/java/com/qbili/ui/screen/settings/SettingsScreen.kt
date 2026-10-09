@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -21,7 +22,7 @@ import androidx.compose.ui.Modifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutClick: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -45,6 +46,15 @@ fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit) {
                 modifier = Modifier.clickable(onClick = onPushSettingsClick),
             )
             HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("关于") },
+                supportingContent = { Text("检查更新、项目介绍与 GitHub 主页") },
+                leadingContent = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                trailingContent = {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                },
+                modifier = Modifier.clickable(onClick = onAboutClick),
+            )
         }
     }
 }

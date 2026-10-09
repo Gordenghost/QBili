@@ -6,6 +6,7 @@ import com.qbili.data.local.DeviceIdStore
 import com.qbili.data.local.RecommendationFilterStore
 import com.qbili.data.local.SearchHistoryStore
 import com.qbili.data.remote.BiliNetwork
+import com.qbili.data.remote.GitHubNetwork
 import com.qbili.data.remote.api.AccountApi
 import com.qbili.data.remote.api.ArticleApi
 import com.qbili.data.remote.api.CommentApi
@@ -29,6 +30,7 @@ import com.qbili.data.remote.api.VideoTagApi
 import com.qbili.data.remote.api.SearchApi
 import com.qbili.data.remote.api.SuggestApi
 import com.qbili.data.repository.AuthRepository
+import com.qbili.data.repository.AppUpdateRepository
 import com.qbili.data.repository.ArticleRepository
 import com.qbili.data.repository.CommentRepository
 import com.qbili.data.repository.FavoriteRepository
@@ -64,6 +66,10 @@ class AppContainer(context: Context) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val network = BiliNetwork(appContext)
+    private val gitHubNetwork by lazy { GitHubNetwork() }
+    val appUpdateRepository: AppUpdateRepository by lazy {
+        AppUpdateRepository(gitHubNetwork.releaseApi)
+    }
 
     private val feedApi: FeedApi by lazy { network.apiRetrofit.create(FeedApi::class.java) }
     private val articleApi: ArticleApi by lazy { network.apiRetrofit.create(ArticleApi::class.java) }

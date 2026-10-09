@@ -31,6 +31,8 @@ E:\environment\gradle-8.10.2\bin\gradle.bat -Dorg.gradle.java.home=E:/environmen
 
 ## 开发约定
 
+- 每次完成新的代码或文档改动后，运行相关测试并执行 `assembleDebug`，随后提交并推送到 GitHub 的当前分支；不要提交本机配置、账号凭据、日志或 APK。构建自动更新的 `version.properties` 可随本次改动提交，不要手动修改。
+- 仅推送源码不会触发应用更新提示；检查更新读取 GitHub 已发布的正式 Release。除非用户要求发布新版本，不自动创建 Release 或上传 APK。
 - 中文注释解释「为什么」而不是复述代码。
 - Retrofit 接口方法不写 Kotlin 默认参数值（DefaultImpls 会导致解析异常），
   固定参数由 Repository 传入。

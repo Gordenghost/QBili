@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 可共享路径：仅暴露日志目录 -->
+<paths>
+    <files-path
+        name="logs"
+        path="logs/" />
+</paths>

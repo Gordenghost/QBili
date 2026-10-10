@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qbili.data.local.RecommendationFilterStore
+import com.qbili.data.local.RecommendationSettingsStore
 import com.qbili.data.repository.FeedRepository
 import com.qbili.data.repository.InteractionRepository
 import com.qbili.core.friendlyMessage
@@ -24,6 +25,7 @@ class HomeViewModel(
     private val repository: FeedRepository,
     private val filterStore: RecommendationFilterStore,
     private val interactionRepository: InteractionRepository,
+    settingsStore: RecommendationSettingsStore,
 ) : ViewModel() {
     private val _hiddenKeys = MutableStateFlow<Set<String>>(emptySet())
     val hiddenKeys = _hiddenKeys.asStateFlow()
@@ -70,7 +72,9 @@ class HomeViewModel(
         }
     }
 
-    private val feed = HomeRecommendationFeed(repository, filterStore.filters, _hiddenKeys, viewModelScope)
+    private val feed = HomeRecommendationFeed(repository, filterStore.filters, _hiddenKeys, viewModelScope,
+        settingsStore.source)
+    val recommendationSource = feed.source
     val videos = feed.videos
 
     fun refresh() {
@@ -80,7 +84,7 @@ class HomeViewModel(
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer { HomeViewModel(container.feedRepository, container.recommendationFilterStore,
-                container.interactionRepository) }
+                container.interactionRepository, container.recommendationSettingsStore) }
         }
     }
 }

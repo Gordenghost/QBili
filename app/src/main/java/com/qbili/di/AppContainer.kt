@@ -4,6 +4,7 @@ import android.content.Context
 import com.qbili.data.local.AccessTokenStore
 import com.qbili.data.local.DeviceIdStore
 import com.qbili.data.local.RecommendationFilterStore
+import com.qbili.data.local.RecommendationSettingsStore
 import com.qbili.data.local.SearchHistoryStore
 import com.qbili.data.local.SeasonProgressStore
 import com.qbili.core.QBiliLog
@@ -17,6 +18,7 @@ import com.qbili.data.remote.api.AppPassportApi
 import com.qbili.data.remote.api.AppInteractionApi
 import com.qbili.data.remote.api.AppSearchApi
 import com.qbili.data.remote.api.FeedApi
+import com.qbili.data.remote.api.AppFeedApi
 import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.api.LiveApi
 import com.qbili.data.remote.api.SpaceApi
@@ -78,6 +80,7 @@ class AppContainer(context: Context) {
     }
 
     private val feedApi: FeedApi by lazy { network.apiRetrofit.create(FeedApi::class.java) }
+    private val appFeedApi: AppFeedApi by lazy { network.appRetrofit.create(AppFeedApi::class.java) }
     private val articleApi: ArticleApi by lazy { network.apiRetrofit.create(ArticleApi::class.java) }
     private val videoTagApi: VideoTagApi by lazy { network.apiRetrofit.create(VideoTagApi::class.java) }
     private val dynamicApi: DynamicApi by lazy { network.apiRetrofit.create(DynamicApi::class.java) }
@@ -118,8 +121,12 @@ class AppContainer(context: Context) {
 
     private val deviceIdStore by lazy { DeviceIdStore(appContext) }
     private val accessTokenStore by lazy { AccessTokenStore(appContext) }
+    val hasAppRecommendationCredentials: Boolean get() = accessTokenStore.hasAccessKey
 
-    val feedRepository: FeedRepository by lazy { FeedRepository(feedApi, videoTagApi) }
+    val feedRepository: FeedRepository by lazy {
+        FeedRepository(feedApi, videoTagApi, appFeedApi,
+            accessKey = { accessTokenStore.accessKey }, buvid = { deviceIdStore.getOrCreate() })
+    }
     val articleRepository: ArticleRepository by lazy { ArticleRepository(articleApi) }
     val dynamicRepository: DynamicRepository by lazy { DynamicRepository(dynamicApi) }
     val liveRepository: LiveRepository by lazy { LiveRepository(liveApi) }
@@ -162,6 +169,9 @@ class AppContainer(context: Context) {
     val searchHistoryStore: SearchHistoryStore by lazy { SearchHistoryStore(appContext) }
     val recommendationFilterStore: RecommendationFilterStore by lazy {
         RecommendationFilterStore(appContext)
+    }
+    val recommendationSettingsStore: RecommendationSettingsStore by lazy {
+        RecommendationSettingsStore(appContext)
     }
 
     val sessionManager: SessionManager by lazy { SessionManager(authRepository, appScope) }

@@ -60,6 +60,10 @@ fun HomeScreen(
     val viewModel: HomeViewModel = viewModel(factory = remember { HomeViewModel.factory(container) })
     val items = viewModel.videos.collectAsLazyPagingItems()
     val gridState = rememberLazyGridState()
+    val recommendationSource by viewModel.recommendationSource.collectAsStateWithLifecycle()
+    LaunchedEffect(recommendationSource) {
+        if (recommendationSource != null) gridState.scrollToItem(0)
+    }
     val refreshLoading by rememberUpdatedState(items.loadState.refresh is LoadState.Loading)
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val cookies by container.sessionManager.loginCookies.collectAsStateWithLifecycle()
@@ -110,7 +114,7 @@ fun HomeScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("推荐") },
+                title = { Text(recommendationSource?.let { "推荐 · ${it.title}" } ?: "推荐") },
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Outlined.Search, contentDescription = "搜索")

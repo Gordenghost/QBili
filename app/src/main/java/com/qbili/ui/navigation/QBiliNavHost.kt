@@ -20,6 +20,7 @@ import com.qbili.ui.screen.settings.PushSettingsScreen
 import com.qbili.ui.screen.settings.PushFilterManagementScreen
 import com.qbili.domain.model.RecommendationFilterGroup
 import com.qbili.ui.screen.settings.SettingsScreen
+import com.qbili.ui.screen.settings.RecommendationSettingsScreen
 import com.qbili.ui.screen.settings.AboutScreen
 import com.qbili.ui.screen.space.SpaceScreen
 import com.qbili.ui.screen.video.VideoPlayerScreen
@@ -177,11 +178,16 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onPushSettingsClick = { navController.navigate(Route.PUSH_SETTINGS) },
                 onAboutClick = { navController.navigate(Route.ABOUT) },
+                onRecommendationSettingsClick = { navController.navigate(Route.RECOMMENDATION_SETTINGS) },
             )
         }
 
         composable(Route.ABOUT) {
             AboutScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Route.RECOMMENDATION_SETTINGS) {
+            RecommendationSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Route.PUSH_SETTINGS) {

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -18,11 +19,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.qbili.ui.LocalAppContainer
 import androidx.compose.ui.Modifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutClick: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutClick: () -> Unit,
+    onRecommendationSettingsClick: () -> Unit) {
+    val source by LocalAppContainer.current.recommendationSettingsStore.source
+        .collectAsStateWithLifecycle(initialValue = null)
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,6 +43,16 @@ fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutC
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ListItem(
+                headlineContent = { Text("推荐算法") },
+                supportingContent = { Text(source?.let { "当前：${it.title} · 点击切换推荐来源" } ?: "正在读取设置…") },
+                leadingContent = { Icon(Icons.Outlined.SwapHoriz, contentDescription = null) },
+                trailingContent = {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                },
+                modifier = Modifier.clickable(onClick = onRecommendationSettingsClick),
+            )
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text("推送设置") },
                 supportingContent = { Text("管理首页推荐的标题关键词与 Tag 屏蔽") },

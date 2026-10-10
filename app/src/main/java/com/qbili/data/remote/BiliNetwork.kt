@@ -64,7 +64,9 @@ class BiliNetwork(context: Context) {
         .apply {
             if (BuildConfig.DEBUG) {
                 addInterceptor(
-                    HttpLoggingInterceptor().apply {
+                    HttpLoggingInterceptor { message ->
+                        HttpLoggingInterceptor.Logger.DEFAULT.log(redactAccessKey(message))
+                    }.apply {
                         level = HttpLoggingInterceptor.Level.BASIC
                         // SESSDATA 等敏感 Cookie 不打进日志
                         redactHeader("Cookie")
@@ -87,3 +89,6 @@ class BiliNetwork(context: Context) {
     val suggestRetrofit: Retrofit by lazy { retrofit(ApiConstants.SUGGEST_BASE) }
     val appRetrofit: Retrofit by lazy { retrofit(ApiConstants.APP_BASE) }
 }
+
+internal fun redactAccessKey(message: String): String =
+    Regex("([?&]access_key=)[^&\\s]*", RegexOption.IGNORE_CASE).replace(message) { "${it.groupValues[1]}<redacted>" }

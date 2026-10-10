@@ -50,6 +50,7 @@ data class FeedItemDto(
 
 @Serializable
 data class RecommendDataDto(
-    val item: List<FeedItemDto> = emptyList(),
+    val item: List<FeedItemDto>? = null,
     val mid: Long? = null,
+    @SerialName("v_voucher") val vVoucher: String? = null,
 )

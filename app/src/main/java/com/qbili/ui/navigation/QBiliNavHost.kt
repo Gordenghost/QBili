@@ -14,7 +14,7 @@ import com.qbili.ui.screen.article.ArticleScreen
 import com.qbili.ui.screen.favorite.FavoriteScreen
 import com.qbili.ui.screen.main.MainScreen
 import com.qbili.ui.screen.messages.MessagesScreen
-import com.qbili.ui.screen.placeholder.PlaceholderScreen
+import com.qbili.ui.screen.season.SeasonScreen
 import com.qbili.ui.screen.search.SearchScreen
 import com.qbili.ui.screen.settings.PushSettingsScreen
 import com.qbili.ui.screen.settings.PushFilterManagementScreen
@@ -121,10 +121,11 @@ fun QBiliNavHost(
         }
 
         composable(Route.SEASON) { entry ->
-            val seasonId = entry.arguments?.getString(Route.ARG_SEASON_ID).orEmpty()
-            PlaceholderScreen(
-                title = "番剧 / 影视",
-                note = "PGC 播放（分集列表、正片鉴权）排在普通视频播放之后\n\n路由参数已就位：seasonId=$seasonId",
+            SeasonScreen(
+                seasonId = entry.arguments?.getString(Route.ARG_SEASON_ID)?.toLongOrNull() ?: 0L,
+                onBack = { navController.popBackStack() },
+                onLoginClick = { navController.navigate(Route.LOGIN) },
+                onCommentsClick = { navController.navigate(Route.buildComments(it)) },
             )
         }
 

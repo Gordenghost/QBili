@@ -175,7 +175,7 @@ fun VideoPlayerScreen(
  * 所以旋转不会重建 Activity，播放不会中断。
  */
 @Composable
-private fun ApplyFullscreenWindow(fullscreen: Boolean) {
+internal fun ApplyFullscreenWindow(fullscreen: Boolean) {
     val activity = LocalContext.current as? Activity ?: return
 
     LaunchedEffect(fullscreen) {

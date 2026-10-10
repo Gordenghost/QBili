@@ -5,6 +5,8 @@ import com.qbili.data.local.AccessTokenStore
 import com.qbili.data.local.DeviceIdStore
 import com.qbili.data.local.RecommendationFilterStore
 import com.qbili.data.local.SearchHistoryStore
+import com.qbili.data.local.SeasonProgressStore
+import com.qbili.core.QBiliLog
 import com.qbili.data.remote.BiliNetwork
 import com.qbili.data.remote.GitHubNetwork
 import com.qbili.data.remote.api.AccountApi
@@ -25,6 +27,7 @@ import com.qbili.data.remote.api.MessageApi
 import com.qbili.data.remote.api.OpusActionApi
 import com.qbili.data.remote.api.PassportApi
 import com.qbili.data.remote.api.PlayurlApi
+import com.qbili.data.remote.api.SeasonApi
 import com.qbili.data.remote.api.VideoApi
 import com.qbili.data.remote.api.VideoTagApi
 import com.qbili.data.remote.api.SearchApi
@@ -46,11 +49,14 @@ import com.qbili.data.repository.OpusInteractionRepository
 import com.qbili.data.repository.DanmakuRepository
 import com.qbili.data.repository.SearchRepository
 import com.qbili.data.repository.VideoRepository
+import com.qbili.data.repository.SeasonRepository
+import com.qbili.domain.model.SeasonProgress
 import com.qbili.data.session.GaiaTokenStore
 import com.qbili.data.session.SessionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 手写依赖容器，替代 Hilt。
@@ -94,6 +100,7 @@ class AppContainer(context: Context) {
     // playurl 与详情、弹幕都在 api.bilibili.com 上，且都不需要签名
     private val playurlApi: PlayurlApi by lazy { network.apiRetrofit.create(PlayurlApi::class.java) }
     private val videoApi: VideoApi by lazy { network.apiRetrofit.create(VideoApi::class.java) }
+    private val seasonApi: SeasonApi by lazy { network.apiRetrofit.create(SeasonApi::class.java) }
     private val interactionApi: InteractionApi by lazy {
         network.apiRetrofit.create(InteractionApi::class.java)
     }
@@ -133,6 +140,14 @@ class AppContainer(context: Context) {
         )
     }
     val videoRepository: VideoRepository by lazy { VideoRepository(videoApi, playurlApi) }
+    val seasonRepository: SeasonRepository by lazy { SeasonRepository(seasonApi) }
+    val seasonProgressStore: SeasonProgressStore by lazy { SeasonProgressStore(appContext) }
+    fun saveSeasonProgress(seasonId: Long, progress: SeasonProgress) {
+        appScope.launch {
+            runCatching { seasonProgressStore.save(seasonId, progress) }
+                .onFailure { QBiliLog.w("SeasonProgress", "保存播放进度失败：${it.message}") }
+        }
+    }
     val danmakuRepository: DanmakuRepository by lazy { DanmakuRepository(videoApi) }
     val interactionRepository: InteractionRepository by lazy {
         InteractionRepository(interactionApi, appInteractionApi, accessTokenStore)

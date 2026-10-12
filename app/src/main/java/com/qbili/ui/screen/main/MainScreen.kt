@@ -56,6 +56,7 @@ fun MainScreen(
     onSpaceClick: (Long) -> Unit,
     onFavoritesClick: () -> Unit,
     onWatchLaterClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onMessagesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onOpusClick: (String) -> Unit,
@@ -130,6 +131,7 @@ fun MainScreen(
                     onSpaceClick = onSpaceClick,
                     onFavoritesClick = onFavoritesClick,
                     onWatchLaterClick = onWatchLaterClick,
+                    onHistoryClick = onHistoryClick,
                     onMessagesClick = onMessagesClick,
                     onSettingsClick = onSettingsClick,
                 )

@@ -58,13 +58,15 @@ fun SeasonScreen(
     onBack: () -> Unit,
     onLoginClick: () -> Unit,
     onCommentsClick: (Long) -> Unit,
+    initialEpisodeId: Long = 0,
+    initialPositionMs: Long = 0,
 ) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val viewModel: SeasonViewModel = viewModel(factory = remember(container) { SeasonViewModel.factory(container, context) })
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(seasonId) { viewModel.load(seasonId) }
+    LaunchedEffect(seasonId) { viewModel.load(seasonId, initialEpisodeId, initialPositionMs) }
     ApplyFullscreenWindow(state.fullscreen)
     BackHandler(state.fullscreen) { viewModel.setFullscreen(false) }
     DisposableEffect(viewModel, lifecycleOwner) {

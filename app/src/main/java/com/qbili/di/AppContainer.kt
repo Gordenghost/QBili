@@ -1,5 +1,13 @@
 package com.qbili.di
 
+import com.qbili.data.local.PlaybackSettingsStore
+import com.qbili.data.local.VideoProgressStore
+import com.qbili.data.remote.api.HistoryApi
+import com.qbili.data.repository.HistoryRepository
+import com.qbili.domain.model.VideoProgress
+import com.qbili.data.remote.cookie.LoginCookies
+import okhttp3.CookieJar
+
 import android.content.Context
 import com.qbili.data.local.AccessTokenStore
 import com.qbili.data.local.DeviceIdStore
@@ -170,6 +178,32 @@ class AppContainer(context: Context) {
         )
     }
     val videoRepository: VideoRepository by lazy { VideoRepository(videoApi, playurlApi) }
+    val videoProgressStore by lazy { VideoProgressStore(appContext) }
+    val playbackSettingsStore by lazy { PlaybackSettingsStore(appContext) }
+    val historyRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build().create(HistoryApi::class.java)
+        HistoryRepository(api, network.cookieJar.loginState,
+            deviceCookies = {
+                listOf("buvid3", "buvid4").mapNotNull { name -> network.cookieJar.valueOf(name)?.let { name to it } }.toMap()
+            },
+            reportAllowed = { progress -> playbackSettingsStore.read().reportHistory &&
+                videoProgressStore.read(progress.accountMid, progress.aid) == progress },
+            removeLocal = videoProgressStore::delete,
+            clearLocal = videoProgressStore::clear,
+        )
+    }
+    fun saveVideoProgress(progress: VideoProgress, session: LoginCookies, report: Boolean) {
+        appScope.launch {
+            runCatching { videoProgressStore.save(progress) }
+                .onFailure { QBiliLog.w("VideoProgress", "保存播放进度失败") }
+            if (report && session.isLoggedIn) {
+                runCatching {
+                    historyRepository.report(session, progress)
+                }.onFailure { QBiliLog.w("VideoProgress", "同步观看历史失败，不影响播放") }
+            }
+        }
+    }
     val seasonRepository: SeasonRepository by lazy { SeasonRepository(seasonApi) }
     val seasonProgressStore: SeasonProgressStore by lazy { SeasonProgressStore(appContext) }
     fun saveSeasonProgress(seasonId: Long, progress: SeasonProgress) {

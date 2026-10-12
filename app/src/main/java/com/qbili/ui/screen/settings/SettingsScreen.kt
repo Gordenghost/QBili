@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutClick: () -> Unit,
-    onRecommendationSettingsClick: () -> Unit) {
+    onRecommendationSettingsClick: () -> Unit, onPlaybackSettingsClick: () -> Unit) {
     val source by LocalAppContainer.current.recommendationSettingsStore.source
         .collectAsStateWithLifecycle(initialValue = null)
     Scaffold(
@@ -43,6 +43,12 @@ fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutC
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ListItem(headlineContent = { Text("播放与历史") },
+                supportingContent = { Text("断点续播与观看历史同步开关") },
+                leadingContent = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+                trailingContent = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable(onClick = onPlaybackSettingsClick))
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text("推荐算法") },
                 supportingContent = { Text(source?.let { "当前：${it.title} · 点击切换推荐来源" } ?: "正在读取设置…") },

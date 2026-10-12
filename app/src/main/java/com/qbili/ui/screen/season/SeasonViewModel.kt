@@ -128,7 +128,7 @@ class SeasonViewModel(
         }
     }
 
-    fun load(id: Long) {
+    fun load(id: Long, initialEpisodeId: Long = 0, initialPositionMs: Long = 0) {
         if (seasonId == id && _uiState.value.detail != null) return
         if (seasonId != id) {
             saveProgress()
@@ -139,6 +139,9 @@ class SeasonViewModel(
             _uiState.update { UiState(loggedIn = it.loggedIn) }
         }
         seasonId = id
+        if (initialEpisodeId > 0) {
+            savedProgress = SeasonProgress(initialEpisodeId, initialPositionMs.coerceAtLeast(0), 0, System.currentTimeMillis())
+        }
         reload()
     }
 

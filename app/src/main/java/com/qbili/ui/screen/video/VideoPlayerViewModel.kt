@@ -38,6 +38,15 @@ import com.qbili.domain.model.VideoInteraction
 import com.qbili.domain.model.VideoQuality
 import com.qbili.domain.player.StreamSelector
 import com.qbili.domain.player.togglePlayback
+import com.qbili.data.local.VideoProgressStore
+import com.qbili.data.local.PlaybackSettingsStore
+import com.qbili.data.remote.cookie.LoginCookies
+import com.qbili.domain.model.VideoProgress
+import com.qbili.domain.model.VideoResume
+import com.qbili.domain.player.SeasonPlaybackIntent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +62,9 @@ class VideoPlayerViewModel(
     private val danmakuRepository: DanmakuRepository,
     private val interactionRepository: InteractionRepository,
     private val sessionManager: SessionManager,
+    private val progressStore: VideoProgressStore,
+    private val settingsStore: PlaybackSettingsStore,
+    private val persistProgress: (VideoProgress, LoginCookies, Boolean) -> Unit,
     context: Context,
 ) : ViewModel() {
 
@@ -90,6 +102,7 @@ class VideoPlayerViewModel(
         val canDislike: Boolean = false,
         /** 切画质/切分P 时的短暂加载，与首次加载区分开，避免整页闪白 */
         val switching: Boolean = false,
+        val resume: VideoResume? = null,
     ) {
         val currentPage get() = detail?.pages?.getOrNull(pageIndex)
         val isLoggedIn: Boolean get() = loggedIn
@@ -108,6 +121,43 @@ class VideoPlayerViewModel(
     private var sleepJob: Job? = null
     private var relationJob: Job? = null
     private var watchLaterLookup: Job? = null
+    private var detailJob: Job? = null
+    private var playJob: Job? = null
+    private var danmakuJob: Job? = null
+    private val playbackIntent = SeasonPlaybackIntent()
+    private var activeCid = 0L
+    private var actuallyPlayed = false
+    private var progressSession = sessionManager.loginCookies.value
+    private var lastReportAt = 0L
+    private var pendingPosition = 0L
+    private var lastSavedProgress: VideoProgress? = null
+    private var lastReportedProgress: VideoProgress? = null
+    private var reportEnabled = false
+
+    init {
+        viewModelScope.launch {
+            settingsStore.settings.collect { reportEnabled = it.reportHistory }
+        }
+        viewModelScope.launch {
+            sessionManager.loginCookies.collect { current ->
+                if (current != progressSession) {
+                    saveProgress()
+                    progressSession = current
+                    actuallyPlayed = false
+                    lastReportAt = 0
+                }
+            }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(5_000)
+                if (activeCid > 0 && player.isPlaying) {
+                    actuallyPlayed = true
+                    saveProgress()
+                }
+            }
+        }
+    }
     /** 长按倍速前的原速度，松手要还原 */
     private var speedBeforeBoost: Float = 1.0f
 
@@ -124,10 +174,14 @@ class VideoPlayerViewModel(
 
                     override fun onIsPlayingChanged(playing: Boolean) {
                         _uiState.update { it.copy(isPlaying = playing) }
+                        if (playing && activeCid > 0) actuallyPlayed = true
+                        if (!playing) saveProgress(forceReport = !player.playWhenReady)
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) saveProgress()
                         if (state == Player.STATE_ENDED && _uiState.value.sleepAtVideoEnd) {
+                            playbackIntent.setRequested(false)
                             pause()
                             _uiState.update { it.copy(sleepAtVideoEnd = false) }
                             QBiliLog.i(TAG, "播完当前视频，定时关闭生效")
@@ -144,14 +198,32 @@ class VideoPlayerViewModel(
             }
     }
 
-    fun load(videoId: String) {
+    fun load(videoId: String, requestedResume: VideoResume? = null) {
         if (this.videoId == videoId && _uiState.value.detail != null) return
+        saveProgress()
+        detailJob?.cancel()
+        playJob?.cancel()
+        danmakuJob?.cancel()
+        relationJob?.cancel()
+        watchLaterLookup?.cancel()
+        activeCid = 0
+        actuallyPlayed = false
+        player.stop()
+        player.clearMediaItems()
+        dash = null
         this.videoId = videoId
+        playbackIntent.setRequested(true)
 
-        viewModelScope.launch {
-            _uiState.update { UiState(loading = true) }
+        detailJob = viewModelScope.launch {
+            _uiState.update { UiState(loading = true, playbackRequested = playbackIntent.shouldPlay) }
             try {
                 val detail = videoRepository.detail(videoId)
+                val expectedSession = sessionManager.loginCookies.value
+                progressSession = expectedSession
+                val stored = runCatching { progressStore.read(expectedSession.mid ?: 0, detail.aid) }.getOrNull()
+                val settings = settingsStore.read()
+                ensureActive()
+                progressSession = sessionManager.loginCookies.value
                 _uiState.update { it.copy(detail = detail, loading = false) }
                 QBiliLog.i(TAG, "详情加载完成: ${detail.title.take(20)} 分P=${detail.pages.size}")
                 refreshInteraction(detail.aid, detail.bvid)
@@ -167,7 +239,20 @@ class VideoPlayerViewModel(
                             .onFailure { QBiliLog.w(TAG, "稍后再看状态加载失败: ${it.message}") }
                     }
                 }
-                playPage(0)
+                val candidate = requestedResume ?: stored?.takeIf { settings.resumeEnabled && expectedSession == progressSession }?.let {
+                    VideoResume(it.cid, it.page, it.resumePositionMs)
+                }
+                val resume = candidate?.takeIf { it.pageIndex(detail.pages) != null }
+                val index = resume?.pageIndex(detail.pages) ?: 0
+                val position = resume?.position(detail.pages.getOrNull(index)?.durationSeconds ?: 0) ?: 0
+                if (position > 0) {
+                    player.pause()
+                    _uiState.update { it.copy(pageIndex = index, resume = resume?.copy(positionMs = position)) }
+                } else {
+                    startPage(index, 0, resetIntent = false)
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 QBiliLog.w(TAG, "详情加载失败: ${e.message}")
                 _uiState.update { it.copy(loading = false, error = e.friendlyMessage()) }
@@ -178,14 +263,38 @@ class VideoPlayerViewModel(
     fun selectPage(index: Int) {
         val pages = _uiState.value.detail?.pages ?: return
         if (index !in pages.indices || index == _uiState.value.pageIndex) return
-        viewModelScope.launch { playPage(index) }
+        startPage(index, 0)
+    }
+
+    fun resolveResume(continuePlayback: Boolean) {
+        val resume = _uiState.value.resume ?: return
+        val index = resume.pageIndex(_uiState.value.detail?.pages.orEmpty()) ?: 0
+        _uiState.update { it.copy(resume = null) }
+        startPage(index, if (continuePlayback) resume.positionMs else 0)
+    }
+
+    private fun startPage(index: Int, position: Long, resetIntent: Boolean = true) {
+        saveProgress(forceReport = true)
+        playJob?.cancel()
+        danmakuJob?.cancel()
+        activeCid = 0
+        actuallyPlayed = false
+        player.stop()
+        player.clearMediaItems()
+        dash = null
+        pendingPosition = position
+        lastReportAt = 0
+        if (resetIntent) playbackIntent.setRequested(true)
+        _uiState.update { it.copy(stream = null, resume = null, playbackRequested = playbackIntent.shouldPlay) }
+        playJob = viewModelScope.launch { playPage(index) }
     }
 
     /** 切画质要重新请求 playurl：登录后服务端才会下发更高档轨道 */
     fun selectQuality(qn: Int) {
         if (qn == _uiState.value.stream?.quality) return
         desiredQn = qn
-        viewModelScope.launch { refreshStream(keepPosition = true) }
+        playJob?.cancel()
+        playJob = viewModelScope.launch { refreshStream(keepPosition = true) }
     }
 
     /** 切编码只需在已缓存的轨道里重选，不用再打接口 */
@@ -235,7 +344,45 @@ class VideoPlayerViewModel(
     }
 
     fun togglePlayPause() {
+        if (_uiState.value.resume != null) return
+        if (_uiState.value.switching || _uiState.value.stream == null) {
+            playbackIntent.toggle()
+            player.playWhenReady = playbackIntent.shouldPlay
+            _uiState.update { it.copy(playbackRequested = playbackIntent.shouldPlay) }
+            return
+        }
         player.togglePlayback()
+        playbackIntent.setRequested(player.playWhenReady)
+    }
+
+    fun onEnter() { playbackIntent.enter() }
+    fun onLeave() {
+        saveProgress(forceReport = true)
+        playbackIntent.leave()
+        player.pause()
+    }
+
+    private fun saveProgress(forceReport: Boolean = false) {
+        val state = _uiState.value
+        val detail = state.detail ?: return
+        val page = state.currentPage ?: return
+        if (activeCid != page.cid || !actuallyPlayed) return
+        val now = System.currentTimeMillis()
+        val duration = player.duration.takeIf { it > 0 } ?: page.durationSeconds * 1000L
+        val position = player.currentPosition.coerceAtLeast(0).let { if (duration > 0) it.coerceAtMost(duration) else it }
+        val progress = VideoProgress(progressSession.mid ?: 0, detail.aid, detail.bvid, page.cid, page.index,
+            page.title, detail.title, detail.cover, detail.authorName, position, duration, now,
+            player.playbackState == Player.STATE_ENDED)
+        fun samePosition(previous: VideoProgress?): Boolean = previous?.let {
+            it.key == progress.key && it.cid == progress.cid && it.positionMs == progress.positionMs && it.completed == progress.completed
+        } ?: false
+        val report = reportEnabled && progressSession == sessionManager.loginCookies.value && progressSession.isLoggedIn &&
+            (forceReport || now - lastReportAt >= 15_000 || progress.completed) && !samePosition(lastReportedProgress)
+        if (samePosition(lastSavedProgress) && !report) return
+        lastSavedProgress = progress
+        if (report) lastReportAt = now
+        if (report) lastReportedProgress = progress
+        persistProgress(progress, progressSession, report)
     }
 
     fun seekBy(deltaMillis: Long) {
@@ -411,6 +558,7 @@ class VideoPlayerViewModel(
                 _uiState.update { it.copy(sleepRemainingSeconds = it.sleepRemainingSeconds - 1) }
             }
             if (isActive) {
+                playbackIntent.setRequested(false)
                 player.pause()
                 QBiliLog.i(TAG, "定时关闭触发，已暂停播放")
             }
@@ -448,9 +596,9 @@ class VideoPlayerViewModel(
         _uiState.update { it.copy(pageIndex = index, switching = true, danmaku = emptyList()) }
 
         // 弹幕与播放地址互不依赖，并发拉；弹幕失败不该拖累播放
-        viewModelScope.launch {
+        danmakuJob = viewModelScope.launch {
             runCatching { danmakuRepository.load(page.cid, page.durationSeconds) }
-                .onSuccess { list -> _uiState.update { it.copy(danmaku = list) } }
+                .onSuccess { list -> if (_uiState.value.currentPage?.cid == page.cid) _uiState.update { it.copy(danmaku = list) } }
                 .onFailure { QBiliLog.w(TAG, "弹幕加载失败: ${it.message}") }
         }
         refreshStream(keepPosition = false)
@@ -461,6 +609,8 @@ class VideoPlayerViewModel(
         _uiState.update { it.copy(switching = true, error = null) }
         try {
             val playurl = videoRepository.playurl(page.cid, videoId, desiredQn)
+            currentCoroutineContext().ensureActive()
+            if (_uiState.value.currentPage?.cid != page.cid) return
             val dashResult = playurl.dash
                 ?: throw IllegalStateException("接口未返回 DASH 流，可能是充电专属或地区限制视频")
             dash = dashResult
@@ -485,6 +635,8 @@ class VideoPlayerViewModel(
                 "选轨: ${stream.qualityLabel} ${stream.codec?.label} " +
                     "${stream.width}x${stream.height} 可选画质=${qualities.map { it.qn }}",
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             QBiliLog.w(TAG, "取播放地址失败: ${e.message}")
             _uiState.update { it.copy(switching = false, error = e.friendlyMessage()) }
@@ -492,12 +644,15 @@ class VideoPlayerViewModel(
     }
 
     private fun applyStream(stream: PlayableStream, keepPosition: Boolean) {
-        val resumeAt = if (keepPosition) player.currentPosition else 0L
-        val resumePlayback = if (keepPosition) player.playWhenReady else true
+        val resumeAt = if (keepPosition) player.currentPosition else pendingPosition
+        val resumePlayback = playbackIntent.shouldPlay
+        activeCid = 0
         player.setMediaSource(buildMediaSource(stream))
         player.prepare()
         if (resumeAt > 0) player.seekTo(resumeAt)
+        activeCid = _uiState.value.currentPage?.cid ?: 0
         player.playWhenReady = resumePlayback
+        pendingPosition = 0
         _uiState.update { it.copy(stream = stream, switching = false) }
     }
 
@@ -527,6 +682,7 @@ class VideoPlayerViewModel(
     }
 
     override fun onCleared() {
+        saveProgress()
         sleepJob?.cancel()
         player.release()
         super.onCleared()
@@ -543,6 +699,9 @@ class VideoPlayerViewModel(
                         danmakuRepository = container.danmakuRepository,
                         interactionRepository = container.interactionRepository,
                         sessionManager = container.sessionManager,
+                        progressStore = container.videoProgressStore,
+                        settingsStore = container.playbackSettingsStore,
+                        persistProgress = container::saveVideoProgress,
                         context = context,
                     )
                 }

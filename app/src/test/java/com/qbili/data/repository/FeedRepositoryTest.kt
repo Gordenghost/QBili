@@ -1,6 +1,7 @@
 package com.qbili.data.repository
 
 import androidx.paging.PagingSource
+import com.qbili.core.BiliRiskControlException
 import com.qbili.data.paging.RecommendPagingSource
 import com.qbili.data.remote.api.FeedApi
 import com.qbili.data.remote.api.VideoTagApi
@@ -58,7 +59,7 @@ class FeedRepositoryTest {
             FeedItemDto(id = 1, bvid = "BVhidden", tname = "生活"),
             FeedItemDto(id = 2, bvid = "BVauthor", owner = com.qbili.data.remote.dto.OwnerDto(mid = 42)),
             FeedItemDto(id = 3, bvid = "BVchannel", tname = "游戏"),
-            FeedItemDto(id = 4, bvid = "BVok", tname = "生活"),
+            FeedItemDto(id = 4, bvid = "BVok", tname = "生活", owner = com.qbili.data.remote.dto.OwnerDto(mid = 4)),
         ))), tags)
         val result = repository.recommend(1, RecommendationFilters(
             hiddenVideos = setOf("BVhidden"), blockedAuthors = setOf(42),
@@ -66,6 +67,16 @@ class FeedRepositoryTest {
         ))
         assertEquals(listOf("BVok"), result.videos.map { it.bvid })
         assertTrue(tags.requested.isEmpty())
+    }
+
+    @Test
+    fun `官方黑名单对网页推荐同样生效`() = runBlocking {
+        val api = FakeFeedApi(mapOf(1 to listOf(
+            FeedItemDto(id = 1, bvid = "BVblocked", owner = com.qbili.data.remote.dto.OwnerDto(mid = 77)),
+            FeedItemDto(id = 2, bvid = "BVok", owner = com.qbili.data.remote.dto.OwnerDto(mid = 88)),
+        )))
+        val repository = FeedRepository(api, FakeVideoTagApi(), blockedAuthors = { setOf(77) })
+        assertEquals(listOf("BVok"), repository.recommend(1, RecommendationFilters()).videos.map { it.key })
     }
 
     @Test
@@ -166,6 +177,25 @@ class FeedRepositoryTest {
             fail("缺失 tag_name 必须抛出异常")
         } catch (_: SerializationException) {
             // 标签缺失必须中断筛选，不能当作空标签允许视频出现。
+        }
+    }
+
+    @Test
+    fun `网页推荐缺失列表不能假装成功空页且风控应抛出`() = runBlocking {
+        val bodies = listOf(
+            """{"code":0,"data":{}}""",
+            """{"code":0,"data":{"v_voucher":"challenge"}}""",
+        )
+        bodies.forEachIndexed { index, body ->
+            val api = object : FeedApi {
+                override suspend fun recommend(freshType: Int, pageSize: Int, freshIdx: Int, freshIdx1h: Int,
+                    brush: Int, feedVersion: String, homepageVer: Int, webLocation: String, yNum: Int,
+                    lastYNum: Int): BiliResponse<RecommendDataDto> = json.decodeFromString(body)
+            }
+            val source = RecommendPagingSource(FeedRepository(api, FakeVideoTagApi()), 1, RecommendationFilters())
+            val result = source.load(refresh(1))
+            assertTrue(result is PagingSource.LoadResult.Error)
+            if (index == 1) assertTrue((result as PagingSource.LoadResult.Error).throwable is BiliRiskControlException)
         }
     }
 

@@ -50,7 +50,7 @@ data class PlayurlResult(
                     video = dtoDash.video.map { dtoStream ->
                         DashStream(
                             id = dtoStream.id,
-                            url = dtoStream.baseUrl,
+                            url = dtoStream.url,
                             backupUrls = dtoStream.backupUrls,
                             bandwidth = dtoStream.bandwidth,
                             codecs = dtoStream.codecs,
@@ -70,7 +70,7 @@ data class PlayurlResult(
                     audio = dtoDash.audio.map { dtoStream ->
                         DashStream(
                             id = dtoStream.id,
-                            url = dtoStream.baseUrl,
+                            url = dtoStream.url,
                             backupUrls = dtoStream.backupUrls,
                             bandwidth = dtoStream.bandwidth,
                             codecs = dtoStream.codecs,
@@ -87,7 +87,7 @@ data class PlayurlResult(
                             audio = dtoDolby.audio.map { dtoStream ->
                                 DashStream(
                                     id = dtoStream.id,
-                                    url = dtoStream.baseUrl,
+                                    url = dtoStream.url,
                                     backupUrls = dtoStream.backupUrls,
                                     bandwidth = dtoStream.bandwidth,
                                     codecs = dtoStream.codecs,
@@ -105,7 +105,7 @@ data class PlayurlResult(
                             audio = dtoFlac.audio.map { dtoStream ->
                                 DashStream(
                                     id = dtoStream.id,
-                                    url = dtoStream.baseUrl,
+                                    url = dtoStream.url,
                                     backupUrls = dtoStream.backupUrls,
                                     bandwidth = dtoStream.bandwidth,
                                     codecs = dtoStream.codecs,
@@ -128,7 +128,7 @@ data class PlayurlResult(
                     video = dtoHls.video.map { dtoStream ->
                         HlsStream(
                             id = dtoStream.id,
-                            url = dtoStream.baseUrl,
+                            url = dtoStream.url,
                             backupUrls = dtoStream.backupUrls,
                             bandwidth = dtoStream.bandwidth,
                             codecs = dtoStream.codecs,
@@ -142,7 +142,7 @@ data class PlayurlResult(
                     audio = dtoHls.audio.map { dtoStream ->
                         HlsStream(
                             id = dtoStream.id,
-                            url = dtoStream.baseUrl,
+                            url = dtoStream.url,
                             backupUrls = dtoStream.backupUrls,
                             bandwidth = dtoStream.bandwidth,
                             codecs = dtoStream.codecs,
@@ -170,7 +170,7 @@ data class PlayurlResult(
                 dash = dashResult,
                 hls = hlsResult,
                 durl = durlResult,
-                durationMillis = dto.timelength * 1000,
+                durationMillis = dto.timelength,
                 timelength = dto.timelength,
                 format = dto.format,
             )

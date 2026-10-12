@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.WatchLater
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -69,6 +70,7 @@ fun ProfileScreen(
     onSpaceClick: (Long) -> Unit,
     onFavoritesClick: () -> Unit,
     onWatchLaterClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onMessagesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -99,6 +101,8 @@ fun ProfileScreen(
             MenuRow(Icons.Outlined.Star, "我的收藏", onFavoritesClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.Outlined.WatchLater, "稍后再看", onWatchLaterClick)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            MenuRow(Icons.Outlined.History, "观看历史", onHistoryClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.AutoMirrored.Outlined.Message, "我的消息", onMessagesClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)

@@ -9,8 +9,12 @@ object Route {
 
     private const val VIDEO_BASE = "video"
     const val ARG_BVID = "bvid"
-    const val VIDEO = "$VIDEO_BASE/{$ARG_BVID}"
-    fun buildVideo(bvid: String) = "$VIDEO_BASE/$bvid"
+    const val ARG_RESUME_CID = "resumeCid"
+    const val ARG_RESUME_PAGE = "resumePage"
+    const val ARG_RESUME_POSITION = "resumePosition"
+    const val VIDEO = "$VIDEO_BASE/{$ARG_BVID}?$ARG_RESUME_CID={$ARG_RESUME_CID}&$ARG_RESUME_PAGE={$ARG_RESUME_PAGE}&$ARG_RESUME_POSITION={$ARG_RESUME_POSITION}"
+    fun buildVideo(bvid: String, resume: com.qbili.domain.model.VideoResume? = null) = "$VIDEO_BASE/$bvid" +
+        (resume?.let { "?$ARG_RESUME_CID=${it.cid}&$ARG_RESUME_PAGE=${it.page}&$ARG_RESUME_POSITION=${it.positionMs}" } ?: "")
 
     private const val COMMENTS_BASE = "comments"
     const val ARG_COMMENT_TYPE = "type"
@@ -36,8 +40,10 @@ object Route {
 
     private const val SEASON_BASE = "season"
     const val ARG_SEASON_ID = "seasonId"
-    const val SEASON = "$SEASON_BASE/{$ARG_SEASON_ID}"
-    fun buildSeason(seasonId: Long) = "$SEASON_BASE/$seasonId"
+    const val ARG_EPISODE_ID = "episodeId"
+    const val SEASON = "$SEASON_BASE/{$ARG_SEASON_ID}?$ARG_EPISODE_ID={$ARG_EPISODE_ID}&$ARG_RESUME_POSITION={$ARG_RESUME_POSITION}"
+    fun buildSeason(seasonId: Long, episodeId: Long = 0, positionMs: Long = 0) = "$SEASON_BASE/$seasonId" +
+        (if (episodeId > 0) "?$ARG_EPISODE_ID=$episodeId&$ARG_RESUME_POSITION=$positionMs" else "")
 
     private const val ARTICLE_BASE = "article"
     const val ARG_CVID = "cvid"
@@ -48,8 +54,11 @@ object Route {
     const val MESSAGES = "messages"
     const val FAVORITES = "favorites"
     const val WATCH_LATER = "watchLater"
+    const val HISTORY = "history"
+    const val PLAYBACK_SETTINGS = "settings/playback"
     const val SETTINGS = "settings"
     const val ABOUT = "settings/about"
+    const val RECOMMENDATION_SETTINGS = "settings/recommendation"
     const val PUSH_SETTINGS = "settings/push"
     fun buildPushFilter(group: RecommendationFilterGroup) = "$PUSH_SETTINGS/${group.key}"
 }

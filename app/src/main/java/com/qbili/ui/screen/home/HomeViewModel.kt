@@ -6,11 +6,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qbili.data.local.RecommendationFilterStore
+import com.qbili.data.local.RecommendationSettingsStore
 import com.qbili.data.repository.FeedRepository
 import com.qbili.data.repository.InteractionRepository
+import com.qbili.data.repository.AccountBlacklistRepository
 import com.qbili.core.friendlyMessage
 import com.qbili.di.AppContainer
 import com.qbili.domain.model.VideoItem
+import com.qbili.domain.model.RecommendationSession
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,11 +22,16 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 
 class HomeViewModel(
     private val repository: FeedRepository,
     private val filterStore: RecommendationFilterStore,
     private val interactionRepository: InteractionRepository,
+    settingsStore: RecommendationSettingsStore,
+    private val blacklistRepository: AccountBlacklistRepository,
+    sessionUpdates: Flow<RecommendationSession>,
 ) : ViewModel() {
     private val _hiddenKeys = MutableStateFlow<Set<String>>(emptySet())
     val hiddenKeys = _hiddenKeys.asStateFlow()
@@ -48,6 +56,7 @@ class HomeViewModel(
 
     fun blockAuthor(video: VideoItem) = perform(video) {
         interactionRepository.blockUser(video.authorMid)
+        blacklistRepository.recordBlocked(video.authorMid)
         filterStore.blockAuthor(video.authorMid)
     }
 
@@ -70,17 +79,33 @@ class HomeViewModel(
         }
     }
 
-    private val feed = HomeRecommendationFeed(repository, filterStore.filters, _hiddenKeys, viewModelScope)
+    private val filters = combine(filterStore.filters, blacklistRepository.authors.onStart { emit(emptySet()) }) { local, official ->
+        local.copy(blockedAuthors = local.blockedAuthors + official)
+    }
+    private val feed = HomeRecommendationFeed(repository, filters, _hiddenKeys, viewModelScope,
+        settingsStore.source, sessionUpdates)
+    val recommendationSource = feed.source
     val videos = feed.videos
 
     fun refresh() {
-        feed.refresh()
+        if (_busy.value) return
+        viewModelScope.launch {
+            try {
+                blacklistRepository.blockedAuthors(forceRefresh = true)
+                feed.refresh()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                feedbackEvents.send("黑名单同步失败：${error.friendlyMessage()}")
+            }
+        }
     }
 
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer { HomeViewModel(container.feedRepository, container.recommendationFilterStore,
-                container.interactionRepository) }
+                container.interactionRepository, container.recommendationSettingsStore,
+                container.accountBlacklistRepository, container.recommendationSessions) }
         }
     }
 }

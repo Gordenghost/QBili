@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.qbili.domain.model.VideoItem
+import com.qbili.domain.model.RecommendationSource
+import com.qbili.core.AppRecommendationAuthException
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.FullScreenError
 import com.qbili.ui.component.FullScreenLoading
@@ -60,6 +62,10 @@ fun HomeScreen(
     val viewModel: HomeViewModel = viewModel(factory = remember { HomeViewModel.factory(container) })
     val items = viewModel.videos.collectAsLazyPagingItems()
     val gridState = rememberLazyGridState()
+    val recommendationSource by viewModel.recommendationSource.collectAsStateWithLifecycle()
+    LaunchedEffect(recommendationSource) {
+        if (recommendationSource != null) gridState.scrollToItem(0)
+    }
     val refreshLoading by rememberUpdatedState(items.loadState.refresh is LoadState.Loading)
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val cookies by container.sessionManager.loginCookies.collectAsStateWithLifecycle()
@@ -110,7 +116,11 @@ fun HomeScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("推荐") },
+                title = { Text(when {
+                    recommendationSource == RecommendationSource.APP && !cookies.isLoggedIn -> "推荐 · App 端（游客）"
+                    recommendationSource != null -> "推荐 · ${recommendationSource!!.title}"
+                    else -> "推荐"
+                }) },
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Outlined.Search, contentDescription = "搜索")
@@ -132,11 +142,20 @@ fun HomeScreen(
             when {
                 refreshState is LoadState.Loading && items.itemCount == 0 -> FullScreenLoading()
 
-                refreshState is LoadState.Error && items.itemCount == 0 ->
-                    FullScreenError(
-                        error = refreshState.error,
-                        onRetry = { items.retry() },
-                    )
+                refreshState is LoadState.Error && items.itemCount == 0 -> {
+                    if (refreshState.error is AppRecommendationAuthException) {
+                        androidx.compose.foundation.layout.Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                        ) {
+                            Text(refreshState.error.message.orEmpty(), modifier = Modifier.padding(24.dp))
+                            TextButton(onClick = onLoginClick) { Text("重新登录（请选择短信登录）") }
+                            TextButton(onClick = onSettingsClick) { Text("打开设置，切换网页端推荐") }
+                            TextButton(onClick = { items.retry() }) { Text("重新校验") }
+                        }
+                    } else FullScreenError(error = refreshState.error, onRetry = { items.retry() })
+                }
 
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(2),

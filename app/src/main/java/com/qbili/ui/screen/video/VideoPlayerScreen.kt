@@ -103,6 +103,11 @@ import com.qbili.ui.component.FullScreenError
 import com.qbili.ui.component.FullScreenLoading
 import com.qbili.ui.util.biliAvatar
 import kotlinx.coroutines.delay
+import com.qbili.domain.model.VideoResume
+import com.qbili.core.formatPosition
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
 private val SLEEP_OPTIONS = listOf(15, 30, 45, 60, 90)
@@ -114,6 +119,7 @@ fun VideoPlayerScreen(
     onBack: () -> Unit,
     onAuthorClick: (Long) -> Unit,
     onCommentsClick: (Long) -> Unit,
+    initialResume: VideoResume? = null,
     modifier: Modifier = Modifier,
 ) {
     val container = LocalAppContainer.current
@@ -123,15 +129,25 @@ fun VideoPlayerScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(videoId) { viewModel.load(videoId) }
+    LaunchedEffect(videoId) { viewModel.load(videoId, initialResume) }
 
     ApplyFullscreenWindow(state.fullscreen)
 
     // 全屏时的返回键先退出全屏，而不是直接离开播放页
     BackHandler(enabled = state.fullscreen) { viewModel.setFullscreen(false) }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.player.pause() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(viewModel, lifecycleOwner) {
+        viewModel.onEnter()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.onLeave()
+            if (event == Lifecycle.Event.ON_START) viewModel.onEnter()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onLeave()
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -166,6 +182,13 @@ fun VideoPlayerScreen(
             }
         }
     }
+    state.resume?.let { resume ->
+        AlertDialog(onDismissRequest = onBack,
+            title = { Text("继续上次播放？") },
+            text = { Text("上次看到 P${state.currentPage?.index ?: resume.page} · ${formatPosition(resume.positionMs)}") },
+            confirmButton = { TextButton(onClick = { viewModel.resolveResume(true) }) { Text("继续播放") } },
+            dismissButton = { TextButton(onClick = { viewModel.resolveResume(false) }) { Text("从头播放") } })
+    }
 }
 
 /**
@@ -175,7 +198,7 @@ fun VideoPlayerScreen(
  * 所以旋转不会重建 Activity，播放不会中断。
  */
 @Composable
-private fun ApplyFullscreenWindow(fullscreen: Boolean) {
+internal fun ApplyFullscreenWindow(fullscreen: Boolean) {
     val activity = LocalContext.current as? Activity ?: return
 
     LaunchedEffect(fullscreen) {

@@ -14,16 +14,22 @@ import com.qbili.ui.screen.article.ArticleScreen
 import com.qbili.ui.screen.favorite.FavoriteScreen
 import com.qbili.ui.screen.main.MainScreen
 import com.qbili.ui.screen.messages.MessagesScreen
-import com.qbili.ui.screen.placeholder.PlaceholderScreen
+import com.qbili.ui.screen.season.SeasonScreen
 import com.qbili.ui.screen.search.SearchScreen
 import com.qbili.ui.screen.settings.PushSettingsScreen
 import com.qbili.ui.screen.settings.PushFilterManagementScreen
 import com.qbili.domain.model.RecommendationFilterGroup
 import com.qbili.ui.screen.settings.SettingsScreen
+import com.qbili.ui.screen.settings.RecommendationSettingsScreen
 import com.qbili.ui.screen.settings.AboutScreen
 import com.qbili.ui.screen.space.SpaceScreen
 import com.qbili.ui.screen.video.VideoPlayerScreen
 import com.qbili.ui.screen.watchlater.WatchLaterScreen
+import com.qbili.ui.screen.history.HistoryScreen
+import com.qbili.ui.screen.settings.PlaybackSettingsScreen
+import com.qbili.domain.model.VideoResume
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 @Composable
 fun QBiliNavHost(
@@ -43,6 +49,7 @@ fun QBiliNavHost(
                 onSpaceClick = { mid -> navController.navigate(Route.buildSpace(mid)) },
                 onFavoritesClick = { navController.navigate(Route.FAVORITES) },
                 onWatchLaterClick = { navController.navigate(Route.WATCH_LATER) },
+                onHistoryClick = { navController.navigate(Route.HISTORY) },
                 onMessagesClick = { navController.navigate(Route.MESSAGES) },
                 onSettingsClick = { navController.navigate(Route.SETTINGS) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
@@ -61,11 +68,19 @@ fun QBiliNavHost(
             )
         }
 
-        composable(Route.VIDEO) { entry ->
+        composable(Route.VIDEO, arguments = listOf(
+            navArgument(Route.ARG_RESUME_CID) { type = NavType.LongType; defaultValue = 0L },
+            navArgument(Route.ARG_RESUME_PAGE) { type = NavType.IntType; defaultValue = 0 },
+            navArgument(Route.ARG_RESUME_POSITION) { type = NavType.LongType; defaultValue = 0L },
+        )) { entry ->
             // 路由参数可能是 BVxxx，也可能是 avNNN（移动端搜索结果只给 aid）
             val videoId = entry.arguments?.getString(Route.ARG_BVID).orEmpty()
             VideoPlayerScreen(
                 videoId = videoId,
+                initialResume = entry.arguments?.getInt(Route.ARG_RESUME_PAGE)?.takeIf { it > 0 }?.let {
+                    VideoResume(entry.arguments?.getLong(Route.ARG_RESUME_CID) ?: 0, it,
+                        entry.arguments?.getLong(Route.ARG_RESUME_POSITION) ?: 0)
+                },
                 onBack = { navController.popBackStack() },
                 onAuthorClick = { mid -> navController.navigate(Route.buildSpace(mid)) },
                 onCommentsClick = { aid -> navController.navigate(Route.buildComments(aid)) },
@@ -120,11 +135,17 @@ fun QBiliNavHost(
             )
         }
 
-        composable(Route.SEASON) { entry ->
-            val seasonId = entry.arguments?.getString(Route.ARG_SEASON_ID).orEmpty()
-            PlaceholderScreen(
-                title = "番剧 / 影视",
-                note = "PGC 播放（分集列表、正片鉴权）排在普通视频播放之后\n\n路由参数已就位：seasonId=$seasonId",
+        composable(Route.SEASON, arguments = listOf(
+            navArgument(Route.ARG_EPISODE_ID) { type = NavType.LongType; defaultValue = 0L },
+            navArgument(Route.ARG_RESUME_POSITION) { type = NavType.LongType; defaultValue = 0L },
+        )) { entry ->
+            SeasonScreen(
+                seasonId = entry.arguments?.getString(Route.ARG_SEASON_ID)?.toLongOrNull() ?: 0L,
+                initialEpisodeId = entry.arguments?.getLong(Route.ARG_EPISODE_ID) ?: 0,
+                initialPositionMs = entry.arguments?.getLong(Route.ARG_RESUME_POSITION) ?: 0,
+                onBack = { navController.popBackStack() },
+                onLoginClick = { navController.navigate(Route.LOGIN) },
+                onCommentsClick = { navController.navigate(Route.buildComments(it)) },
             )
         }
 
@@ -176,11 +197,28 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onPushSettingsClick = { navController.navigate(Route.PUSH_SETTINGS) },
                 onAboutClick = { navController.navigate(Route.ABOUT) },
+                onRecommendationSettingsClick = { navController.navigate(Route.RECOMMENDATION_SETTINGS) },
+                onPlaybackSettingsClick = { navController.navigate(Route.PLAYBACK_SETTINGS) },
             )
         }
 
         composable(Route.ABOUT) {
             AboutScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Route.HISTORY) {
+            HistoryScreen(onBack = { navController.popBackStack() },
+                onLoginClick = { navController.navigate(Route.LOGIN) },
+                onVideoClick = { navController.navigate(Route.buildVideo(it.videoId, it.resume)) },
+                onSeasonClick = { id, item -> navController.navigate(Route.buildSeason(id, item.episodeId,
+                    if (item.completed) 0 else item.positionMs)) })
+        }
+        composable(Route.PLAYBACK_SETTINGS) {
+            PlaybackSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Route.RECOMMENDATION_SETTINGS) {
+            RecommendationSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Route.PUSH_SETTINGS) {

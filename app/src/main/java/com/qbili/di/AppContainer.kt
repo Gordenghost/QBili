@@ -19,6 +19,8 @@ import com.qbili.data.remote.api.AppInteractionApi
 import com.qbili.data.remote.api.AppSearchApi
 import com.qbili.data.remote.api.FeedApi
 import com.qbili.data.remote.api.AppFeedApi
+import com.qbili.data.remote.api.AppAccountApi
+import com.qbili.data.remote.api.AccountRelationApi
 import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.api.LiveApi
 import com.qbili.data.remote.api.SpaceApi
@@ -40,6 +42,8 @@ import com.qbili.data.repository.ArticleRepository
 import com.qbili.data.repository.CommentRepository
 import com.qbili.data.repository.FavoriteRepository
 import com.qbili.data.repository.FeedRepository
+import com.qbili.data.repository.AccountBlacklistRepository
+import com.qbili.data.repository.AppRecommendationAuthRepository
 import com.qbili.data.repository.DynamicRepository
 import com.qbili.data.repository.LiveRepository
 import com.qbili.data.repository.SpaceRepository
@@ -53,12 +57,15 @@ import com.qbili.data.repository.SearchRepository
 import com.qbili.data.repository.VideoRepository
 import com.qbili.data.repository.SeasonRepository
 import com.qbili.domain.model.SeasonProgress
+import com.qbili.domain.model.RecommendationSession
 import com.qbili.data.session.GaiaTokenStore
 import com.qbili.data.session.SessionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * 手写依赖容器，替代 Hilt。
@@ -81,6 +88,8 @@ class AppContainer(context: Context) {
 
     private val feedApi: FeedApi by lazy { network.apiRetrofit.create(FeedApi::class.java) }
     private val appFeedApi: AppFeedApi by lazy { network.appRetrofit.create(AppFeedApi::class.java) }
+    private val appAccountApi: AppAccountApi by lazy { network.passportRetrofit.create(AppAccountApi::class.java) }
+    private val accountRelationApi: AccountRelationApi by lazy { network.apiRetrofit.create(AccountRelationApi::class.java) }
     private val articleApi: ArticleApi by lazy { network.apiRetrofit.create(ArticleApi::class.java) }
     private val videoTagApi: VideoTagApi by lazy { network.apiRetrofit.create(VideoTagApi::class.java) }
     private val dynamicApi: DynamicApi by lazy { network.apiRetrofit.create(DynamicApi::class.java) }
@@ -121,11 +130,25 @@ class AppContainer(context: Context) {
 
     private val deviceIdStore by lazy { DeviceIdStore(appContext) }
     private val accessTokenStore by lazy { AccessTokenStore(appContext) }
-    val hasAppRecommendationCredentials: Boolean get() = accessTokenStore.hasAccessKey
+    val hasAppRecommendationCredentials: Boolean get() = network.cookieJar.loginState.value.let { cookies ->
+        cookies.isLoggedIn && accessTokenStore.credential?.let { token ->
+            !token.isExpired(System.currentTimeMillis()) && (token.mid == null || token.mid == cookies.mid)
+        } == true
+    }
+    val recommendationSessions by lazy {
+        combine(network.cookieJar.loginState, accessTokenStore.revision) { cookies, revision ->
+            RecommendationSession(cookies.mid.takeIf { cookies.isLoggedIn }, cookies.sessData, revision)
+        }.distinctUntilChanged()
+    }
+    val accountBlacklistRepository by lazy { AccountBlacklistRepository(network.cookieJar.loginState, accountRelationApi) }
+    val appRecommendationAuthRepository by lazy {
+        AppRecommendationAuthRepository(appAccountApi, { network.cookieJar.loginState.value }, { accessTokenStore.credential })
+    }
 
     val feedRepository: FeedRepository by lazy {
         FeedRepository(feedApi, videoTagApi, appFeedApi,
-            accessKey = { accessTokenStore.accessKey }, buvid = { deviceIdStore.getOrCreate() })
+            accessKey = { appRecommendationAuthRepository.accessKey() }, buvid = { deviceIdStore.getOrCreate() },
+            blockedAuthors = { accountBlacklistRepository.blockedAuthors() }, videoApi = videoApi)
     }
     val articleRepository: ArticleRepository by lazy { ArticleRepository(articleApi) }
     val dynamicRepository: DynamicRepository by lazy { DynamicRepository(dynamicApi) }

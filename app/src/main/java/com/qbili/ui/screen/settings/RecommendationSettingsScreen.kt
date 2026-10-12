@@ -46,6 +46,7 @@ fun RecommendationSettingsScreen(onBack: () -> Unit) {
     val container = LocalAppContainer.current
     val store = container.recommendationSettingsStore
     val source by store.source.collectAsStateWithLifecycle(initialValue = null)
+    val cookies by container.sessionManager.loginCookies.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var saving by remember { mutableStateOf(false) }
@@ -108,12 +109,14 @@ fun RecommendationSettingsScreen(onBack: () -> Unit) {
                 Text("这里只切换推荐来源，不修改 B 站服务端的算法；标题、Tag、频道和 UP 屏蔽对两种来源都生效。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp))
-                Text(if (container.hasAppRecommendationCredentials)
-                    "App 端会使用当前移动端登录身份请求个性化推荐。"
-                else "当前没有 App 登录凭据，App 端以匿名身份推荐；短信或密码登录后可使用移动端账号身份。扫码或 Cookie 登录仍可使用网页端账号推荐。",
+                Text(when {
+                    !cookies.isLoggedIn -> "当前未登录，App 端显示游客推荐。登录后会重新加载账号推荐和官方黑名单。"
+                    container.hasAppRecommendationCredentials -> "App 端会校验凭据所属账号与有效期，使用当前移动端登录身份请求推荐。"
+                    else -> "当前登录没有可用的 App 凭据。扫码、Cookie 和当前密码登录只有网页身份；请重新短信登录，或切换网页端。不会用游客推荐冒充账号推荐。"
+                },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                Text("若接口异常，会显示错误并允许重试，不会悄悄退回另一种来源。",
+                Text("首页会同步当前账号的完整官方黑名单，两种来源均过滤已拉黑 UP；下拉刷新会重新同步。若身份校验或黑名单同步失败，会显示错误，不会继续放行未校验的推荐。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp))
             }

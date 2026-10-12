@@ -15,6 +15,7 @@ import com.qbili.data.remote.dto.VideoTagDto
 import com.qbili.data.repository.FeedRepository
 import com.qbili.domain.model.RecommendationFilters
 import com.qbili.domain.model.RecommendationSource
+import com.qbili.domain.model.RecommendationSession
 import com.qbili.domain.model.VideoItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,6 +172,65 @@ class HomeRecommendationFeedTest {
             assertEquals(listOf(0L), app.requests)
             assertEquals((1..11).map { "BVapp$it" }, differ.snapshot().items.map { it.key })
             assertTrue(web.requests.isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `同一App来源登录更换账号及退出都会从零重新加载`() = runBlocking {
+        val web = FakeFeedApi()
+        val app = FakeAppFeedApi()
+        val sessions = MutableStateFlow(RecommendationSession(null, null, 0))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val feed = HomeRecommendationFeed(FeedRepository(web, FakeTagApi(), app),
+            MutableStateFlow(RecommendationFilters()), MutableStateFlow(emptySet()), scope,
+            MutableStateFlow(RecommendationSource.APP), sessions)
+        val differ = presenter()
+        try {
+            scope.launch { feed.videos.collectLatest { differ.collectFrom(it) } }
+            withTimeout(5000) { while (differ.size != 1) yield() }
+            listOf(RecommendationSession(42, "first", 1), RecommendationSession(99, "second", 2),
+                RecommendationSession(null, null, 3)).forEachIndexed { index, session ->
+                sessions.value = session
+                withTimeout(5000) { while (app.requests.size < index + 2 || differ.size != 1) yield() }
+            }
+            assertEquals(listOf(0L, 0L, 0L, 0L), app.requests)
+            assertTrue(web.requests.isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `登录中旧App请求结束不能覆盖新账号页面`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val app = object : AppFeedApi {
+            var calls = 0
+            override suspend fun recommend(parameters: Map<String, String>, buvid: String): BiliResponse<AppRecommendDataDto> {
+                calls++
+                val currentCall = calls
+                if (currentCall == 1) gate.await()
+                return BiliResponse(data = AppRecommendDataDto(items = listOf(
+                    AppFeedItemDto(idx = 10, param = JsonPrimitive("170001"), bvid = "BV$currentCall",
+                        goto = "av", cardGoto = "av", canPlay = 1),
+                )))
+            }
+        }
+        val sessions = MutableStateFlow(RecommendationSession(null, null, 0))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val feed = HomeRecommendationFeed(FeedRepository(FakeFeedApi(), FakeTagApi(), app),
+            MutableStateFlow(RecommendationFilters()), MutableStateFlow(emptySet()), scope,
+            MutableStateFlow(RecommendationSource.APP), sessions)
+        val differ = presenter()
+        try {
+            scope.launch { feed.videos.collectLatest { differ.collectFrom(it) } }
+            withTimeout(5000) { while (app.calls == 0) yield() }
+            sessions.value = RecommendationSession(42, "logged-in", 1)
+            withTimeout(5000) { while (differ.snapshot().items.map { it.key } != listOf("BV2")) yield() }
+            gate.complete(Unit)
+            repeat(20) { yield() }
+            assertEquals(listOf("BV2"), differ.snapshot().items.map { it.key })
         } finally {
             scope.cancel()
         }

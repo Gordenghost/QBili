@@ -59,7 +59,7 @@ class FeedRepositoryTest {
             FeedItemDto(id = 1, bvid = "BVhidden", tname = "生活"),
             FeedItemDto(id = 2, bvid = "BVauthor", owner = com.qbili.data.remote.dto.OwnerDto(mid = 42)),
             FeedItemDto(id = 3, bvid = "BVchannel", tname = "游戏"),
-            FeedItemDto(id = 4, bvid = "BVok", tname = "生活"),
+            FeedItemDto(id = 4, bvid = "BVok", tname = "生活", owner = com.qbili.data.remote.dto.OwnerDto(mid = 4)),
         ))), tags)
         val result = repository.recommend(1, RecommendationFilters(
             hiddenVideos = setOf("BVhidden"), blockedAuthors = setOf(42),
@@ -67,6 +67,16 @@ class FeedRepositoryTest {
         ))
         assertEquals(listOf("BVok"), result.videos.map { it.bvid })
         assertTrue(tags.requested.isEmpty())
+    }
+
+    @Test
+    fun `官方黑名单对网页推荐同样生效`() = runBlocking {
+        val api = FakeFeedApi(mapOf(1 to listOf(
+            FeedItemDto(id = 1, bvid = "BVblocked", owner = com.qbili.data.remote.dto.OwnerDto(mid = 77)),
+            FeedItemDto(id = 2, bvid = "BVok", owner = com.qbili.data.remote.dto.OwnerDto(mid = 88)),
+        )))
+        val repository = FeedRepository(api, FakeVideoTagApi(), blockedAuthors = { setOf(77) })
+        assertEquals(listOf("BVok"), repository.recommend(1, RecommendationFilters()).videos.map { it.key })
     }
 
     @Test

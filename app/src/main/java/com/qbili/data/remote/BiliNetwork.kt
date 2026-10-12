@@ -91,4 +91,5 @@ class BiliNetwork(context: Context) {
 }
 
 internal fun redactAccessKey(message: String): String =
-    Regex("([?&]access_key=)[^&\\s]*", RegexOption.IGNORE_CASE).replace(message) { "${it.groupValues[1]}<redacted>" }
+    Regex("([?&](?:access_key|access_token|SESSDATA|bili_jct)=)[^&\\s]*", RegexOption.IGNORE_CASE)
+        .replace(message) { "${it.groupValues[1]}<redacted>" }

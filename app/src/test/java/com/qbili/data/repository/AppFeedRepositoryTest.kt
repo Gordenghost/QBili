@@ -8,6 +8,15 @@ import com.qbili.data.remote.api.VideoTagApi
 import com.qbili.data.remote.dto.AppFeedArgsDto
 import com.qbili.data.remote.dto.AppFeedItemDto
 import com.qbili.data.remote.dto.AppRecommendDataDto
+import com.qbili.data.remote.api.VideoApi
+import com.qbili.data.remote.api.AppAccountApi
+import com.qbili.data.remote.dto.VideoViewDto
+import com.qbili.data.remote.dto.OwnerDto
+import com.qbili.data.remote.dto.AppTokenStatusDto
+import com.qbili.data.remote.cookie.LoginCookies
+import com.qbili.data.local.AppAccessToken
+import com.qbili.core.AppRecommendationAuthException
+import okhttp3.ResponseBody
 import com.qbili.data.remote.dto.BiliResponse
 import com.qbili.data.remote.dto.RecommendDataDto
 import com.qbili.data.remote.dto.VideoTagDto
@@ -46,7 +55,7 @@ class AppFeedRepositoryTest {
 
     private fun video(aid: Long, index: Long, bvid: String = "BV$aid", title: String = "视频") =
         AppFeedItemDto(idx = index, param = JsonPrimitive(aid.toString()), bvid = bvid,
-            goto = "av", cardGoto = "av", canPlay = 1, title = title)
+            goto = "av", cardGoto = "av", canPlay = 1, title = title, args = AppFeedArgsDto(upId = aid))
 
     @Test
     fun `真实卡片字段解析并补BV升级封面协议`() {
@@ -102,7 +111,7 @@ class AppFeedRepositoryTest {
         val app = AppApi { BiliResponse(data = AppRecommendDataDto(items = listOf(
             video(1, 9, "BVhidden"), video(2, 8, "BVtitle", "game实况"),
             video(3, 7, "BVauthor").copy(args = AppFeedArgsDto(upId = 42)),
-            video(4, 6, "BVchannel").copy(args = AppFeedArgsDto(tname = "生活")),
+            video(4, 6, "BVchannel").copy(args = AppFeedArgsDto(upId = 4, tname = "生活")),
             video(5, 5, "BVtag"), video(6, 4, "BVok"),
         ))) }
         val result = FeedRepository(web, tags, app).recommendApp(0, RecommendationFilters(
@@ -162,5 +171,62 @@ class AppFeedRepositoryTest {
             val paging = AppRecommendPagingSource(FeedRepository(web, tags, AppApi { response })) { RecommendationFilters() }
             assertTrue(paging.load(PagingSource.LoadParams.Refresh(10L, 12, false)) is PagingSource.LoadResult.Error)
         }
+    }
+
+    @Test
+    fun `官方拉黑和本机拉黑取并集在App推荐前加载`() = runBlocking {
+        var loaded = false
+        val app = AppApi { BiliResponse(data = AppRecommendDataDto(items = listOf(
+            video(1, 3), video(2, 2), video(3, 1),
+        ))) }
+        val repository = FeedRepository(web, tags, app, blockedAuthors = { loaded = true; setOf(2) })
+        val result = repository.recommendApp(0, RecommendationFilters(blockedAuthors = setOf(1)))
+        assertTrue(loaded)
+        assertEquals(listOf("BV3"), result.videos.map { it.key })
+    }
+
+    @Test
+    fun `黑名单同步失败不能发起App推荐`() = runBlocking {
+        val app = AppApi { BiliResponse(data = AppRecommendDataDto(items = emptyList())) }
+        val repository = FeedRepository(web, tags, app, blockedAuthors = { error("同步失败") })
+        val source = AppRecommendPagingSource(repository) { RecommendationFilters() }
+        assertTrue(source.load(PagingSource.LoadParams.Refresh(null, 12, false)) is PagingSource.LoadResult.Error)
+        assertTrue(app.requests.isEmpty())
+    }
+
+    @Test
+    fun `App身份校验失败不能发游客推荐而有效token传到推荐请求`() = runBlocking {
+        val app = AppApi { BiliResponse(data = AppRecommendDataDto(items = emptyList())) }
+        var token: AppAccessToken? = null
+        val auth = AppRecommendationAuthRepository(object : AppAccountApi {
+            override suspend fun tokenInfo(accessKey: String): BiliResponse<AppTokenStatusDto> =
+                BiliResponse(data = AppTokenStatusDto(42, 3600))
+        }, { LoginCookies("session", "csrf", 42) }, { token })
+        val repository = FeedRepository(web, tags, app, accessKey = { auth.accessKey() })
+        val source = AppRecommendPagingSource(repository) { RecommendationFilters() }
+        val error = source.load(PagingSource.LoadParams.Refresh(null, 12, false)) as PagingSource.LoadResult.Error
+        assertTrue(error.throwable is AppRecommendationAuthException)
+        assertTrue(app.requests.isEmpty())
+        token = AppAccessToken("verified", 42)
+        repository.recommendApp(0, RecommendationFilters())
+        assertEquals("verified", app.requests.single()["access_key"])
+    }
+
+    @Test
+    fun `推荐卡片缺少UP身份需补查详情而不是绕过黑名单`() = runBlocking {
+        val app = AppApi { BiliResponse(data = AppRecommendDataDto(items = listOf(
+            video(1, 2).copy(args = null), video(2, 1),
+        ))) }
+        var requests = 0
+        val detail = object : VideoApi {
+            override suspend fun view(bvid: String?, aid: Long?): BiliResponse<VideoViewDto> {
+                requests++
+                return BiliResponse(data = VideoViewDto(owner = OwnerDto(mid = 99)))
+            }
+            override suspend fun danmakuSegment(type: Int, cid: Long, segmentIndex: Int): ResponseBody = error("不应请求弹幕")
+        }
+        val repository = FeedRepository(web, tags, app, blockedAuthors = { setOf(99) }, videoApi = detail)
+        assertEquals(listOf("BV2"), repository.recommendApp(0, RecommendationFilters()).videos.map { it.key })
+        assertEquals(1, requests)
     }
 }

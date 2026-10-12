@@ -111,8 +111,11 @@ class AuthRepository(
      * 轮询扫码状态。登录成功时凭据由 Set-Cookie 下发，CookieJar 已自动落库。
      * 注意外层 code 恒为 0，真正的状态码在返回值的 [QrCodePollDto.code]。
      */
-    suspend fun pollQrCode(qrcodeKey: String): QrCodePollDto =
-        passportApi.pollQrCode(qrcodeKey = qrcodeKey, source = SOURCE).requireData()
+    suspend fun pollQrCode(qrcodeKey: String): QrCodePollDto {
+        val result = passportApi.pollQrCode(qrcodeKey = qrcodeKey, source = SOURCE).requireData()
+        if (result.code == 0) accessTokenStore.clear()
+        return result
+    }
 
     // ---------- 验证码 ----------
 
@@ -148,6 +151,7 @@ class AuthRepository(
             goUrl = ApiConstants.WEB_ORIGIN,
         ).requireData()
         checkLoginResult(result.status, result.message, result.url)
+        accessTokenStore.clear()
     }
 
     // ---------- 移动端短信登录（推荐路径） ----------
@@ -219,7 +223,12 @@ class AuthRepository(
         if (!cookieJar.loginState.value.isLoggedIn) {
             throw BiliApiException(-1, "登录成功但未能解析出凭据，请改用扫码或 Cookie 导入")
         }
-        accessTokenStore.save(result.tokenInfo?.accessToken)
+        val token = result.tokenInfo
+        if (token != null && token.mid != cookieJar.loginState.value.mid) {
+            accessTokenStore.clear()
+            throw BiliApiException(-1, "App 凭据与登录账号不一致，请重新登录")
+        }
+        accessTokenStore.save(token?.accessToken, token?.mid ?: 0, token?.expiresIn ?: 0)
         QBiliLog.i(TAG, "短信登录成功")
     }
 
@@ -387,6 +396,7 @@ class AuthRepository(
             )
         }
 
+        accessTokenStore.clear()
         cookieJar.putRaw(ApiConstants.Cookie.SESSDATA, sessData)
         cookieJar.putRaw(ApiConstants.Cookie.DEDE_USER_ID, mid)
         cookieJar.putRaw(ApiConstants.Cookie.BILI_JCT, biliJct)

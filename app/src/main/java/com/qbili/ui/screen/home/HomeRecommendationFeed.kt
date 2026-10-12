@@ -10,6 +10,7 @@ import com.qbili.data.paging.AppRecommendPagingSource
 import com.qbili.data.repository.FeedRepository
 import com.qbili.domain.model.RecommendationFilters
 import com.qbili.domain.model.RecommendationSource
+import com.qbili.domain.model.RecommendationSession
 import com.qbili.domain.model.VideoItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,12 +36,16 @@ internal class HomeRecommendationFeed(
     hiddenKeys: StateFlow<Set<String>>,
     scope: CoroutineScope,
     sourceUpdates: Flow<RecommendationSource> = flowOf(RecommendationSource.WEB),
+    sessionUpdates: Flow<RecommendationSession> = flowOf(RecommendationSession(null, null, 0)),
 ) {
     private val filters = filterUpdates.stateIn(scope, SharingStarted.Eagerly, null)
     val source = sourceUpdates.stateIn(scope, SharingStarted.Eagerly, null)
     private val refreshSeed = MutableStateFlow(1)
 
-    private val pages = source.filterNotNull().withIndex().flatMapLatest { (changeIndex, selectedSource) ->
+    private val pages = combine(source.filterNotNull(), sessionUpdates) { selectedSource, session ->
+        selectedSource to session
+    }.withIndex().flatMapLatest { (changeIndex, selection) ->
+        val selectedSource = selection.first
         flow {
             if (changeIndex > 0) emit(PagingData.empty<VideoItem>())
             emitAll(refreshSeed.flatMapLatest { seed ->

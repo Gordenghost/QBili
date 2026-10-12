@@ -3,6 +3,7 @@ package com.qbili.data.repository
 import com.qbili.data.remote.api.FeedApi
 import com.qbili.data.remote.api.AppFeedApi
 import com.qbili.data.remote.api.VideoTagApi
+import com.qbili.data.remote.api.VideoApi
 import com.qbili.data.remote.dto.AppFeedItemDto
 import com.qbili.data.remote.dto.FeedItemDto
 import com.qbili.data.remote.dto.requireData
@@ -33,8 +34,10 @@ class FeedRepository(
     private val api: FeedApi,
     private val videoTagApi: VideoTagApi,
     private val appApi: AppFeedApi? = null,
-    private val accessKey: () -> String? = { null },
+    private val accessKey: suspend () -> String? = { null },
     private val buvid: () -> String = { "" },
+    private val blockedAuthors: suspend () -> Set<Long> = { emptySet() },
+    private val videoApi: VideoApi? = null,
 ) {
 
     suspend fun primaryTag(video: VideoItem): String? = videoTagApi.tags(
@@ -80,6 +83,7 @@ class FeedRepository(
         filters: RecommendationFilters,
         pageSize: Int = PAGE_SIZE,
     ): RecommendationPage {
+        val rules = filters.copy(blockedAuthors = filters.blockedAuthors + blockedAuthors())
         val data = api.recommend(
             freshType = 4,
             pageSize = pageSize,
@@ -98,12 +102,14 @@ class FeedRepository(
             // 推荐流里混有番剧、图文、直播等条目，当前只展示普通视频
             .filter { it.goto == null || it.goto == "av" }
             .mapNotNull { it.toVideoItemOrNull() }
-        return RecommendationPage(filter(candidates, filters), hasMore = items.isNotEmpty())
+        return RecommendationPage(filter(candidates, rules), hasMore = items.isNotEmpty())
     }
 
     suspend fun recommendApp(index: Long, filters: RecommendationFilters): RecommendationPage {
+        val token = accessKey()
+        val rules = filters.copy(blockedAuthors = filters.blockedAuthors + blockedAuthors())
         val data = requireNotNull(appApi) { "App 推荐接口未配置" }.recommend(
-            parameters = appRecommendationParameters(index, accessKey()),
+            parameters = appRecommendationParameters(index, token),
             buvid = buvid(),
         ).requireData()
         data.vVoucher?.takeIf { it.isNotBlank() }?.let { throw BiliRiskControlException(it) }
@@ -112,14 +118,23 @@ class FeedRepository(
             "App 端推荐未返回分页游标，请重试或切换推荐来源"
         }.also { require(it > 0 && (index == 0L || it < index)) { "App 端推荐分页游标无效，请刷新后重试" } }
         return RecommendationPage(
-            videos = filter(items.mapNotNull { it.toVideoItemOrNull() }, filters),
+            videos = filter(items.mapNotNull { it.toVideoItemOrNull() }, rules),
             hasMore = items.isNotEmpty(),
             nextIndex = nextIndex,
         )
     }
 
     private suspend fun filter(videos: List<VideoItem>, filters: RecommendationFilters): List<VideoItem> {
-        val candidates = videos.filterNot { filters.blocksVideo(it) }
+        val candidates = videos.filterNot { filters.blocksVideo(it) }.map { video ->
+            if (video.authorMid > 0 || filters.blockedAuthors.isEmpty()) video else {
+                val detail = requireNotNull(videoApi) { "无法校验推荐 UP 身份，请重新加载" }.view(
+                    bvid = video.bvid.takeIf { it.isNotBlank() },
+                    aid = video.aid.takeIf { video.bvid.isBlank() },
+                ).requireData()
+                val owner = requireNotNull(detail.owner?.takeIf { it.mid > 0 }) { "推荐 UP 身份缺失，请重新加载" }
+                video.copy(authorMid = owner.mid, authorName = owner.name.orEmpty(), authorFace = owner.face.orEmpty())
+            }
+        }.filterNot { filters.blocksVideo(it) }
         return if (!filters.needsTagLookup) candidates else coroutineScope {
             candidates.map { video ->
                 async {

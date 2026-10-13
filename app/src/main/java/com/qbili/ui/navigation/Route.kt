@@ -56,6 +56,7 @@ object Route {
     const val WATCH_LATER = "watchLater"
     const val HISTORY = "history"
     const val PLAYBACK_SETTINGS = "settings/playback"
+    const val THEME_SETTINGS = "settings/theme"
     const val SETTINGS = "settings"
     const val ABOUT = "settings/about"
     const val RECOMMENDATION_SETTINGS = "settings/recommendation"

@@ -10,6 +10,7 @@ import com.qbili.data.remote.cookie.LoginCookies
 import okhttp3.CookieJar
 
 import android.content.Context
+import com.qbili.data.local.ThemeSettingsStore
 import com.qbili.data.local.AccessTokenStore
 import com.qbili.data.local.DeviceIdStore
 import com.qbili.data.local.RecommendationFilterStore
@@ -182,6 +183,7 @@ class AppContainer(context: Context) {
     val videoRepository: VideoRepository by lazy { VideoRepository(videoApi, playurlApi) }
     val videoProgressStore by lazy { VideoProgressStore(appContext) }
     val playbackSettingsStore by lazy { PlaybackSettingsStore(appContext) }
+    val themeSettingsStore by lazy { ThemeSettingsStore(appContext) }
     val historyRepository by lazy {
         val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
         val api = network.apiRetrofit.newBuilder().client(client).build().create(HistoryApi::class.java)

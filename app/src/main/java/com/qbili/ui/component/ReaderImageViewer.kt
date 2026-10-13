@@ -10,17 +10,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -44,10 +49,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.qbili.core.friendlyMessage
@@ -82,55 +90,90 @@ fun ReaderImageViewer(images: List<String>, initialIndex: Int, onDismiss: () -> 
             image?.file?.delete()
             saving = false
         } else scope.launch {
-            try {
+            val message = try {
                 repository.save(image, uri)
-                saving = false
-                snackbars.showSnackbar("图片保存成功")
+                "图片保存成功"
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                pending?.file?.delete()
-                pending = null
-                saving = false
-                snackbars.showSnackbar("保存失败：${error.friendlyMessage()}")
+                "保存失败：${error.friendlyMessage()}"
             } finally { image.file.delete(); saving = false }
+            snackbars.showSnackbar(message)
         }
     }
     fun saveImage() {
         if (saving || url == null) return
+        snackbars.currentSnackbarData?.dismiss()
         saving = true
         scope.launch {
             var image: DownloadedReaderImage? = null
-            try {
+            val message = try {
                 image = repository.download(url)
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     pending = image
                     picker.launch(image.name)
                     image = null
+                    null
                 } else {
                     repository.save(image)
-                    saving = false
-                    snackbars.showSnackbar("已保存到相册 Pictures/QBili")
+                    "已保存到相册 Pictures/QBili"
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
                 pending?.file?.delete()
                 pending = null
-                saving = false
-                snackbars.showSnackbar("保存失败：${error.friendlyMessage()}")
+                "保存失败：${error.friendlyMessage()}"
             } finally { image?.file?.delete(); if (pending == null) saving = false }
+            if (message != null) snackbars.showSnackbar(message)
         }
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "关闭图片", tint = Color.White) }
-                Text("${index + 1} / ${images.size}", color = Color.White, modifier = Modifier.weight(1f))
-                if (saving) CircularProgressIndicator(Modifier.size(24.dp), color = Color.White)
-                IconButton(onClick = ::saveImage, enabled = !saving && url != null) {
-                    Icon(Icons.Outlined.Download, "保存图片", tint = if (saving) Color.Gray else Color.White)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
+        usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+    )) {
+        val view = LocalView.current
+        DisposableEffect(view) {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            window?.let {
+                WindowCompat.getInsetsController(it, view).apply {
+                    isAppearanceLightStatusBars = false
+                    isAppearanceLightNavigationBars = false
                 }
             }
-            Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged { area = it }
+            onDispose { }
+        }
+        Scaffold(
+            modifier = Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding(),
+            containerColor = Color.Black,
+            contentColor = Color.White,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "关闭图片", tint = Color.White) }
+                    Text("${index + 1} / ${images.size}", color = Color.White, modifier = Modifier.weight(1f))
+                    if (saving) CircularProgressIndicator(Modifier.size(24.dp), color = Color.White)
+                    IconButton(onClick = ::saveImage, enabled = !saving && url != null) {
+                        Icon(Icons.Outlined.Download, "保存图片", tint = if (saving) Color.Gray else Color.White)
+                    }
+                }
+            },
+            bottomBar = {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("双指缩放 · 双击放大", color = Color.White,
+                        style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        val buttonColors = ButtonDefaults.textButtonColors(
+                            contentColor = Color.White, disabledContentColor = Color.Gray)
+                        TextButton(onClick = { index-- }, enabled = index > 0, colors = buttonColors) { Text("上一张") }
+                        TextButton(onClick = { index++ }, enabled = index < images.lastIndex, colors = buttonColors) { Text("下一张") }
+                    }
+                }
+            },
+            snackbarHost = {
+                SnackbarHost(snackbars, Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) { data ->
+                    Snackbar(data, containerColor = Color(0xFF323232), contentColor = Color.White)
+                }
+            },
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding).clipToBounds().onSizeChanged { area = it }
                 .pointerInput(index) {
                     detectTransformGestures { centroid, pan, factor, _ ->
                         val next = (zoom * factor).coerceIn(1f, 6f)
@@ -156,12 +199,6 @@ fun ReaderImageViewer(images: List<String>, initialIndex: Int, onDismiss: () -> 
                     TextButton(onClick = { retry++ }) { Text("重试") }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { index-- }, enabled = index > 0) { Text("上一张") }
-                Text("双指缩放 · 双击放大", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = { index++ }, enabled = index < images.lastIndex) { Text("下一张") }
-            }
-            SnackbarHost(snackbars)
         }
     }
 }

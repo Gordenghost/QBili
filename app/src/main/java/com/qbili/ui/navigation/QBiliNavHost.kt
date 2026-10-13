@@ -27,6 +27,7 @@ import com.qbili.ui.screen.video.VideoPlayerScreen
 import com.qbili.ui.screen.watchlater.WatchLaterScreen
 import com.qbili.ui.screen.history.HistoryScreen
 import com.qbili.ui.screen.settings.PlaybackSettingsScreen
+import com.qbili.ui.screen.settings.ThemeSettingsScreen
 import com.qbili.domain.model.VideoResume
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -200,11 +201,16 @@ fun QBiliNavHost(
                 onAboutClick = { navController.navigate(Route.ABOUT) },
                 onRecommendationSettingsClick = { navController.navigate(Route.RECOMMENDATION_SETTINGS) },
                 onPlaybackSettingsClick = { navController.navigate(Route.PLAYBACK_SETTINGS) },
+                onThemeSettingsClick = { navController.navigate(Route.THEME_SETTINGS) },
             )
         }
 
         composable(Route.ABOUT) {
             AboutScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Route.THEME_SETTINGS) {
+            ThemeSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Route.HISTORY) {

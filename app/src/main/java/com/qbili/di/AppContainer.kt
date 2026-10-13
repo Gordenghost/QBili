@@ -4,6 +4,7 @@ import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.local.VideoProgressStore
 import com.qbili.data.remote.api.HistoryApi
 import com.qbili.data.repository.HistoryRepository
+import com.qbili.data.repository.ReaderImageRepository
 import com.qbili.domain.model.VideoProgress
 import com.qbili.data.remote.cookie.LoginCookies
 import okhttp3.CookieJar
@@ -159,6 +160,7 @@ class AppContainer(context: Context) {
             blockedAuthors = { accountBlacklistRepository.blockedAuthors() }, videoApi = videoApi)
     }
     val articleRepository: ArticleRepository by lazy { ArticleRepository(articleApi) }
+    val readerImageRepository by lazy { ReaderImageRepository(appContext, network.imageClient) }
     val dynamicRepository: DynamicRepository by lazy { DynamicRepository(dynamicApi) }
     val liveRepository: LiveRepository by lazy { LiveRepository(liveApi) }
     val spaceRepository: SpaceRepository by lazy { SpaceRepository(spaceApi) }

@@ -95,6 +95,7 @@ fun QBiliNavHost(
                 type = type,
                 onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
+                onAuthorClick = { mid -> if (mid > 0) navController.navigate(Route.buildSpace(mid)) },
             )
         }
 

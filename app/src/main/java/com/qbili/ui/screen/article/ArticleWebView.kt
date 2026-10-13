@@ -20,6 +20,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.qbili.domain.model.ArticleDetail
 import com.qbili.domain.model.articleDocument
 import com.qbili.domain.model.articleImageUrls
+import com.qbili.domain.model.readerImagePreviewIndex
+import com.qbili.domain.model.readerImageUrl
+import com.qbili.domain.model.readerContentImageUrls
 import com.qbili.core.QBiliLog
 import com.qbili.ui.LocalAppContainer
 import okhttp3.Request
@@ -33,17 +36,25 @@ internal fun ArticleWebView(
     onAuthorClick: (Long) -> Unit,
     onArticleClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    onImageClick: (List<String>, Int) -> Unit = { _, _ -> },
+    sourceUrl: String = "https://www.bilibili.com/read/cv${detail.id}/",
 ) {
     val context = LocalContext.current
     val imageClient = LocalAppContainer.current.network.imageClient
     val images = remember(detail.contentHtml) { articleImageUrls(detail.contentHtml) }
+    val previewImages = remember(detail.contentHtml) { readerContentImageUrls(detail.contentHtml) }
     val currentImages by rememberUpdatedState(images.toSet())
-    val currentArticleId by rememberUpdatedState(detail.id)
+    val currentImageList by rememberUpdatedState(previewImages)
+    val currentOnImageClick by rememberUpdatedState(onImageClick)
+    val currentOnAuthorClick by rememberUpdatedState(onAuthorClick)
+    val currentOnArticleClick by rememberUpdatedState(onArticleClick)
+    val currentSourceUrl by rememberUpdatedState(sourceUrl)
     val colors = MaterialTheme.colorScheme
     val document = remember(detail, colors.onSurface, colors.surface) {
         articleDocument(detail.title, detail.authorName, detail.contentHtml,
-            colors.onSurface.css(), colors.surface.css())
+            colors.onSurface.css(), colors.surface.css(), imagePreview = true)
     }
+    val documentKey = document to sourceUrl
     AndroidView(
         factory = { host ->
             WebView(host).apply {
@@ -71,7 +82,7 @@ internal fun ArticleWebView(
                         // 让 WebView 始终使用统一图片客户端逐张读取，避免预取大小上限和 data URI 兼容问题。
                         return try {
                             val response = imageClient.newCall(Request.Builder().url(originalUrl)
-                                .header("Referer", "https://www.bilibili.com/read/cv$currentArticleId/")
+                                .header("Referer", currentSourceUrl)
                                 .build()).execute()
                             val body = response.body
                             if (!response.isSuccessful || body == null) {
@@ -104,6 +115,17 @@ internal fun ArticleWebView(
 
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val uri = request.url
+                        if (!request.isForMainFrame) return true
+                        val index = readerImagePreviewIndex(uri.toString(), currentImageList.size)
+                        if (index != null) {
+                            currentOnImageClick(currentImageList, index)
+                            return true
+                        }
+                        val directImage = currentImageList.indexOf(uri.toString())
+                        if (directImage >= 0 && readerImageUrl(uri.toString()) != null) {
+                            currentOnImageClick(currentImageList, directImage)
+                            return true
+                        }
                         if (uri.scheme !in listOf("http", "https")) return true
                         val mid = if (uri.host == "space.bilibili.com")
                             uri.pathSegments.firstOrNull()?.toLongOrNull() else null
@@ -111,9 +133,9 @@ internal fun ArticleWebView(
                             Regex("""^/read/cv(\d+)/?""").find(uri.path.orEmpty())
                                 ?.groupValues?.get(1)?.toLongOrNull() else null
                         when {
-                            mid != null -> onAuthorClick(mid)
-                            articleId != null -> onArticleClick(articleId)
-                            else -> context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            mid != null && mid > 0 -> currentOnAuthorClick(mid)
+                            articleId != null && articleId > 0 -> currentOnArticleClick(articleId)
+                            uri.host != "qbili.invalid" -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         }
                         return true
                     }
@@ -121,9 +143,9 @@ internal fun ArticleWebView(
             }
         },
         update = { webView ->
-            if (webView.tag != document) {
-                webView.tag = document
-                webView.loadDataWithBaseURL("https://www.bilibili.com/read/cv${detail.id}/",
+            if (webView.tag != documentKey) {
+                webView.tag = documentKey
+                webView.loadDataWithBaseURL(sourceUrl,
                     document, "text/html", "UTF-8", null)
             }
         },

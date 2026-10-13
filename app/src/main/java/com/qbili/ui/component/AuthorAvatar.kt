@@ -21,10 +21,10 @@ import coil.compose.AsyncImage
 import com.qbili.ui.util.biliAvatar
 
 @Composable
-fun AuthorAvatar(face: String, name: String, size: Dp = 40.dp) {
+fun AuthorAvatar(face: String, name: String, size: Dp = 40.dp, modifier: Modifier = Modifier) {
     var failed by remember(face) { mutableStateOf(face.isBlank()) }
     Box(
-        modifier = Modifier.size(size).clip(CircleShape)
+        modifier = modifier.size(size).clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

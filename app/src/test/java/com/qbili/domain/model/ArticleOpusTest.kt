@@ -3,12 +3,45 @@ package com.qbili.domain.model
 import com.qbili.data.remote.dto.ArticleViewDto
 import com.qbili.data.remote.dto.BiliResponse
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArticleOpusTest {
+    @Test
+    fun `完整图文包含标题引用列表代码表情和跳转不会丢失内容`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":8,"heading":{"nodes":[{"word":{"words":"标题"}}]}},
+            {"para_type":4,"text":{"nodes":[{"word":{"words":"引用"}}]}},
+            {"para_type":6,"list":{"items":[{"order":2,"nodes":[{"word":{"words":"列表项"}}]}]}},
+            {"para_type":7,"code":{"content":"a < b"}},
+            {"para_type":3,"line":{}},
+            {"para_type":1,"text":{"nodes":[{"rich":{"type":"RICH_TEXT_NODE_TYPE_EMOJI","orig_text":"[doge]","emoji":{"url":"//i0.hdslb.com/doge.png"}}},{"rich":{"type":"RICH_TEXT_NODE_TYPE_AT","text":"@作者","rid":"42"}}]}},
+            {"para_type":2,"pic":{"pics":[{"url":"//article.biliimg.com/image.png"}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<h2>标题</h2>"))
+        assertTrue(rendered.html.contains("<blockquote>引用</blockquote>"))
+        assertTrue(rendered.html.contains("<ol start='2'><li>列表项</li></ol>"))
+        assertTrue(rendered.html.contains("<pre><code>a &lt; b</code></pre>"))
+        assertTrue(rendered.html.contains("class='reader-emoji'"))
+        assertTrue(rendered.html.contains("https://space.bilibili.com/42"))
+        assertEquals(listOf("https://article.biliimg.com/image.png"), readerContentImageUrls(rendered.html))
+    }
+
+    @Test
+    fun `不支持或缺失内容明确保留回退入口而非伪装完整阅读`() {
+        val paragraphs = Json.parseToJsonElement("""[{"para_type":99,"unknown":{}},{"pic":{"pics":[{"url":"javascript:alert(1)"}]}}]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertFalse(rendered.complete)
+        assertTrue(rendered.html.contains("暂不支持"))
+        assertFalse(rendered.html.contains("javascript:"))
+        assertFalse(renderOpusParagraphs(JsonArray(emptyList())).complete)
+    }
+
     @Test
     fun `新版专栏从 opus 的段落图片与字体信息生成正文`() {
         val response = Json { ignoreUnknownKeys = true }.decodeFromString<BiliResponse<ArticleViewDto>>(

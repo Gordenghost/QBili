@@ -20,6 +20,16 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class CommentRepositoryTest {
+    @Test
+    fun `评论及嵌套回复头像兼容face和avatar字段`() {
+        val entry = Json.decodeFromString<CommentEntryDto>("""{"rpid":1,"member":{"mid":"42","uname":"用户","avatar":"//i0.hdslb.com/avatar.png"},"replies":[{"rpid":2,"member":{"mid":"43","uname":"回复用户","face":"https://i0.hdslb.com/face.jpg","avatar":"ignore"}}]}""")
+        val comment = entry.toModel()
+        assertEquals(42L, comment.authorMid)
+        assertEquals("//i0.hdslb.com/avatar.png", comment.authorFace)
+        assertEquals("https://i0.hdslb.com/face.jpg", comment.previews.single().authorFace)
+        assertEquals(43L, comment.previews.single().authorMid)
+    }
+
     private class FakeApi : CommentApi {
         var expectedType = CommentRepository.TYPE_VIDEO
         var requestedType = 0

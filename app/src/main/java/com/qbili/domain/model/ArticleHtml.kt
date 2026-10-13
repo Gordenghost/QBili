@@ -12,15 +12,23 @@ fun articleDocument(
     textColor: String,
     backgroundColor: String,
     embeddedImages: Map<String, String> = emptyMap(),
+    imagePreview: Boolean = false,
 ): String {
-    val readyContent = imageTags.replace(content) { match ->
+    val images = readerContentImageUrls(content)
+    val previewContent = if (imagePreview) Regex("""<a\b[^>]*>\s*(<img\b[^>]*>)\s*</a>""", RegexOption.IGNORE_CASE)
+        .replace(content) { it.groupValues[1] } else content
+    val readyContent = imageTags.replace(previewContent) { match ->
         val source = imageUrl(match.value)
         if (source == null) match.value else {
             val url = (embeddedImages[source] ?: source).replace("'", "&#39;")
-            match.value.replace(imageSource, "")
+            val image = match.value.replace(imageSource, "")
                 .replace(imageSrcSet, "")
                 .replace(Regex("""\s+loading\s*=\s*(['"]).*?\1""", RegexOption.IGNORE_CASE), "")
                 .replaceFirst(Regex("<img", RegexOption.IGNORE_CASE), "<img src='$url' loading='eager'")
+            val index = images.indexOf(source)
+            if (imagePreview && index >= 0 && readerImageUrl(source) != null) {
+                "<a href='${readerImagePreviewLink(index)}' class='reader-image'>$image</a>"
+            } else image
         }
     }
     return """<!doctype html><html lang="zh-CN"><head>
@@ -44,6 +52,8 @@ fun articleDocument(
           .ql-size-large { font-size: 1.4em; }
           img, video { max-width: 100% !important; height: auto !important; }
           img { display: block; margin: 12px auto; }
+          img.reader-emoji { display: inline-block; width: 24px; height: 24px !important; margin: 0 2px; vertical-align: middle; }
+          .reader-image { display: contents; }
           figure { max-width: 100%; margin: 16px 0; }
           pre { overflow-x: auto; white-space: pre-wrap; }
           a { color: #00a1d6; }
@@ -57,6 +67,10 @@ fun articleDocument(
 fun articleImageUrls(content: String): List<String> = imageTags.findAll(content)
     .mapNotNull { imageUrl(it.value)?.takeIf { url -> url.startsWith("https://") } }
     .distinct().toList()
+
+fun readerContentImageUrls(content: String): List<String> = imageTags.findAll(content)
+    .filterNot { Regex("""\bclass\s*=\s*(['"])[^'"]*\breader-emoji\b[^'"]*\1""").containsMatchIn(it.value) }
+    .mapNotNull { imageUrl(it.value)?.let(::readerImageUrl) }.distinct().toList()
 
 private fun imageUrl(tag: String): String? {
     val source = lazyImageSource.find(tag)?.let { it.groupValues[2].ifBlank { it.groupValues[3] } }

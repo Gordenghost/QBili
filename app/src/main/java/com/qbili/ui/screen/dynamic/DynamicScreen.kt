@@ -29,7 +29,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +52,7 @@ import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.util.biliAvatar
 import com.qbili.domain.model.formatDynamicText
 import com.qbili.ui.util.biliThumbnail
+import com.qbili.ui.component.ReaderImageViewer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,14 +129,7 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
     modifier: Modifier = Modifier) {
     var selectedImage by remember(post.id) { mutableStateOf<String?>(null) }
     selectedImage?.let { url ->
-        Dialog(onDismissRequest = { selectedImage = null }) {
-            AsyncImage(
-                model = normalizeUrl(url), contentDescription = "图片预览",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxWidth().height(500.dp)
-                    .clickable { selectedImage = null },
-            )
-        }
+        ReaderImageViewer(post.images, post.images.indexOf(url)) { selectedImage = null }
     }
     Card(
         onClick = {

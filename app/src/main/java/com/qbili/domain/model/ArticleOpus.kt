@@ -25,7 +25,16 @@ fun renderOpusParagraphs(paragraphs: JsonArray): RenderedOpusContent {
                 return@forEach
             }
             val pictures = paragraph.objectValue("pic")?.get("pics") as? JsonArray
-            if (pictures != null) {
+            val headingNodes = paragraph.objectValue("heading")?.get("nodes") as? JsonArray
+            val textNodes = paragraph.objectValue("text")?.get("nodes") as? JsonArray
+            val nodes = headingNodes?.takeIf { it.isNotEmpty() }
+                ?: textNodes ?: headingNodes
+            if (!pictures.isNullOrEmpty()) {
+                if (!nodes.isNullOrEmpty() || !paragraph.stringValue("text").isNullOrBlank()) {
+                    val textPart = renderOpusParagraphs(JsonArray(listOf(JsonObject(paragraph - "pic"))))
+                    append(textPart.html)
+                    if (!textPart.complete) complete = false
+                }
                 pictures.forEach { picture ->
                     val url = (picture as? JsonObject)?.stringValue("url")?.articleImageUrl()
                     if (url == null) {
@@ -38,16 +47,19 @@ fun renderOpusParagraphs(paragraphs: JsonArray): RenderedOpusContent {
                 return@forEach
             }
             val code = paragraph.objectValue("code")?.stringValue("content")
+                ?.takeIf { it.isNotEmpty() || nodes == null }
             if (code != null) {
                 append("<pre><code>${code.escapeOpusHtml()}</code></pre>")
                 return@forEach
             }
-            if (paragraph.containsKey("line") || paragraph.stringValue("para_type") == "3") {
+            if (paragraph.stringValue("para_type") == "3" ||
+                (paragraph.containsKey("line") && nodes == null && paragraph.stringValue("para_type") == null)) {
                 append("<hr>")
                 return@forEach
             }
             val list = paragraph.objectValue("list")
-            if (list != null && list["items"] is JsonArray) {
+            if (list != null && list["items"] is JsonArray &&
+                ((list["items"] as JsonArray).isNotEmpty() || nodes == null)) {
                 (list["items"] as JsonArray).forEach { entry ->
                     val item = entry as? JsonObject
                     val order = item?.stringValue("order")?.toIntOrNull()?.takeIf { it > 0 }
@@ -72,7 +84,6 @@ fun renderOpusParagraphs(paragraphs: JsonArray): RenderedOpusContent {
                     return@forEach
                 }
             }
-            val nodes = (paragraph.objectValue("heading") ?: paragraph.objectValue("text"))?.get("nodes") as? JsonArray
             if (nodes == null) {
                 val plain = paragraph.stringValue("text")
                 if (plain != null) append("<p>${plain.escapeOpusHtml().replace("\n", "<br>")}</p>") else {
@@ -88,7 +99,7 @@ fun renderOpusParagraphs(paragraphs: JsonArray): RenderedOpusContent {
             val tag = when {
                 listFormat != null -> "li"
                 paragraph.stringValue("para_type") == "4" -> "blockquote"
-                paragraph.containsKey("heading") -> "h2"
+                !headingNodes.isNullOrEmpty() -> "h2"
                 level == "xLarge" || (size != null && size >= 22) -> "h2"
                 level == "large" || (size != null && size >= 20) -> "h3"
                 else -> "p"
@@ -128,7 +139,10 @@ fun renderOpusParagraphs(paragraphs: JsonArray): RenderedOpusContent {
                     if (style?.stringValue("italic") == "true") formatted = "<em>$formatted</em>"
                     if (style?.stringValue("underline") == "true") formatted = "<u>$formatted</u>"
                     if (style?.stringValue("strikethrough") == "true") formatted = "<s>$formatted</s>"
-                    val color = word?.stringValue("color")?.takeIf { it.matches(Regex("#[0-9a-fA-F]{3,8}")) }
+                    val color = word?.stringValue("color")?.takeIf {
+                        it.matches(Regex("#[0-9a-fA-F]{3,8}")) &&
+                            it.lowercase() !in setOf("#fff", "#ffffff", "#ffffffff", "#000", "#000000", "#000000ff")
+                    }
                     if (color != null) formatted = "<span style='color:$color'>$formatted</span>"
                     val mid = rich?.stringValue("rid")?.toLongOrNull()?.takeIf { it > 0 }
                     val link = if (rich?.stringValue("type") == "RICH_TEXT_NODE_TYPE_AT" && mid != null) {

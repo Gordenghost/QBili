@@ -5,12 +5,16 @@ import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.dto.BiliResponse
 import com.qbili.data.remote.dto.DynamicFeedDto
 import com.qbili.data.remote.dto.OpusDetailDto
+import com.qbili.data.remote.dto.DynamicAuthorsDto
+import com.qbili.data.remote.dto.DynamicAuthorDto
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DynamicRepositoryTest {
@@ -22,6 +26,18 @@ class DynamicRepositoryTest {
         var receivedMid: Long? = null
         var detailCalls = 0
         var detailResponse = BiliResponse<OpusDetailDto>(data = OpusDetailDto())
+        var authorsResponse = BiliResponse(data = DynamicAuthorsDto())
+        var receivedAuthorsPage: Int? = null
+        var receivedAccountMid: Long? = null
+
+        override suspend fun followedAuthors(mid: Long, page: Int, pageSize: Int,
+            order: String): BiliResponse<DynamicAuthorsDto> {
+            assertEquals(50, pageSize)
+            assertEquals("desc", order)
+            receivedAccountMid = mid
+            receivedAuthorsPage = page
+            return authorsResponse
+        }
 
         override suspend fun following(type: String, timezoneOffset: Int, features: String,
             offset: String?): BiliResponse<DynamicFeedDto> {
@@ -44,6 +60,38 @@ class DynamicRepositoryTest {
             detailCalls++
             return detailResponse
         }
+    }
+
+    @Test
+    fun `关注UP列表分页使用当前账号保留头像且不读取游客`() = runBlocking<Unit> {
+        val api = FakeApi().apply {
+            authorsResponse = BiliResponse(data = DynamicAuthorsDto(listOf(
+                DynamicAuthorDto(42, "作者", "//face.jpg"), DynamicAuthorDto(42, "重复", ""),
+                DynamicAuthorDto(0, "无效", "")), total = 51))
+        }
+        val repository = DynamicRepository(api)
+        val first = repository.followedAuthors(7, 1)
+        assertEquals(7L, api.receivedAccountMid)
+        assertEquals(1, api.receivedAuthorsPage)
+        assertEquals(1, first.authors.size)
+        assertEquals("//face.jpg", first.authors.single().face)
+        assertTrue(first.hasMore)
+        assertFalse(repository.followedAuthors(7, 2).hasMore)
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { repository.followedAuthors(0, 1) } }
+    }
+
+    @Test
+    fun `单UP空间分页只显示该作者但保留下一页游标`() = runBlocking {
+        val api = FakeApi().apply { response = json.decodeFromString("""{"code":0,"data":{
+            "has_more":true,"offset":"next","items":[
+            {"id_str":"123","modules":{"module_author":{"mid":42,"name":"所选作者"},
+             "module_dynamic":{"desc":{"text":"我的动态"}}}},
+            {"id_str":"124","modules":{"module_author":{"mid":43,"name":"其他作者"},
+             "module_dynamic":{"desc":{"text":"不应该出现"}}}}
+        ]}}""") }
+        val result = DynamicRepository(api).space(42)
+        assertEquals(listOf(42L), result.posts.map { it.authorMid })
+        assertEquals("next", result.next)
     }
 
     @Test

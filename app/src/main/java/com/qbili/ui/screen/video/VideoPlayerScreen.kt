@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.Context
 import android.content.Intent
+import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -49,7 +50,9 @@ import androidx.compose.material.icons.outlined.ThumbUpOffAlt
 import androidx.compose.material.icons.outlined.ThumbDownOffAlt
 import androidx.compose.material.icons.outlined.WatchLater
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +77,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,6 +109,7 @@ import com.qbili.ui.util.biliAvatar
 import kotlinx.coroutines.delay
 import com.qbili.domain.model.VideoResume
 import com.qbili.core.formatPosition
+import com.qbili.R
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -128,20 +133,30 @@ fun VideoPlayerScreen(
         factory = remember { VideoPlayerViewModel.factory(container, context) },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var exiting by remember(viewModel) { mutableStateOf(false) }
+
+    fun leave() {
+        if (exiting) return
+        exiting = true
+        viewModel.exitPlayback()
+        onBack()
+    }
 
     LaunchedEffect(videoId) { viewModel.load(videoId, initialResume) }
 
     ApplyFullscreenWindow(state.fullscreen)
 
     // 全屏时的返回键先退出全屏，而不是直接离开播放页
-    BackHandler(enabled = state.fullscreen) { viewModel.setFullscreen(false) }
+    BackHandler {
+        if (state.fullscreen) viewModel.setFullscreen(false) else leave()
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(viewModel, lifecycleOwner) {
         viewModel.onEnter()
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.onLeave()
-            if (event == Lifecycle.Event.ON_START) viewModel.onEnter()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) viewModel.onLeave()
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.onEnter()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -156,7 +171,8 @@ fun VideoPlayerScreen(
         PlayerSurface(
             viewModel = viewModel,
             state = state,
-            onBack = { if (state.fullscreen) viewModel.setFullscreen(false) else onBack() },
+            exiting = exiting,
+            onBack = { if (state.fullscreen) viewModel.setFullscreen(false) else leave() },
             modifier = if (state.fullscreen) {
                 Modifier.fillMaxSize()
             } else {
@@ -181,13 +197,6 @@ fun VideoPlayerScreen(
                 )
             }
         }
-    }
-    state.resume?.let { resume ->
-        AlertDialog(onDismissRequest = onBack,
-            title = { Text("继续上次播放？") },
-            text = { Text("上次看到 P${state.currentPage?.index ?: resume.page} · ${formatPosition(resume.positionMs)}") },
-            confirmButton = { TextButton(onClick = { viewModel.resolveResume(true) }) { Text("继续播放") } },
-            dismissButton = { TextButton(onClick = { viewModel.resolveResume(false) }) { Text("从头播放") } })
     }
 }
 
@@ -234,12 +243,30 @@ private fun PlayerSurface(
     viewModel: VideoPlayerViewModel,
     state: VideoPlayerViewModel.UiState,
     onBack: () -> Unit,
+    exiting: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsInteraction by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
     var controlsPressed by remember { mutableStateOf(false) }
+    var playerView by remember(viewModel) { mutableStateOf<PlayerView?>(null) }
+    val currentExiting by rememberUpdatedState(exiting)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_DESTROY) {
+                playerView?.player = null
+            }
+            if (event == Lifecycle.Event.ON_RESUME && !currentExiting) playerView?.player = viewModel.player
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            playerView?.player = null
+        }
+    }
 
     LaunchedEffect(controlsVisible, controlsInteraction, scrubbing, controlsPressed) {
         if (controlsVisible && !scrubbing && !controlsPressed) {
@@ -252,11 +279,12 @@ private fun PlayerSurface(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = viewModel.player
-                    useController = false
+                (LayoutInflater.from(ctx).inflate(R.layout.video_player_view, null, false) as PlayerView).also {
+                    playerView = it
                 }
             },
+            update = { it.player = if (!exiting && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.player else null },
+            onRelease = { it.player = null; if (playerView === it) playerView = null },
         )
 
         // 弹幕盖在画面之上，底部留出控制条的高度
@@ -299,7 +327,10 @@ private fun PlayerSurface(
         }
 
         IconButton(
-            onClick = onBack,
+            onClick = {
+                if (!state.fullscreen) playerView?.player = null
+                onBack()
+            },
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp),
         ) {
             Icon(
@@ -307,6 +338,24 @@ private fun PlayerSurface(
                 contentDescription = "返回",
                 tint = Color.White,
             )
+        }
+
+        state.resume?.let { resume ->
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 40.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.7f)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = viewModel::resumeFromHistory, enabled = !state.switching,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) {
+                    Text("继续上次 · P${state.currentPage?.index ?: resume.page} ${formatPosition(resume.positionMs)}",
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                IconButton(onClick = viewModel::dismissResume, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "关闭续播提示", tint = Color.White,
+                        modifier = Modifier.size(16.dp))
+                }
+            }
         }
 
         Row(

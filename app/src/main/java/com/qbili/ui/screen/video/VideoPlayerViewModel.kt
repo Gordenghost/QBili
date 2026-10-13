@@ -43,6 +43,7 @@ import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.remote.cookie.LoginCookies
 import com.qbili.domain.model.VideoProgress
 import com.qbili.domain.model.VideoResume
+import com.qbili.domain.model.videoPlaybackStart
 import com.qbili.domain.player.SeasonPlaybackIntent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -133,6 +134,7 @@ class VideoPlayerViewModel(
     private var lastSavedProgress: VideoProgress? = null
     private var lastReportedProgress: VideoProgress? = null
     private var reportEnabled = false
+    private var exited = false
 
     init {
         viewModelScope.launch {
@@ -212,6 +214,7 @@ class VideoPlayerViewModel(
         player.clearMediaItems()
         dash = null
         this.videoId = videoId
+        exited = false
         playbackIntent.setRequested(true)
 
         detailJob = viewModelScope.launch {
@@ -242,15 +245,8 @@ class VideoPlayerViewModel(
                 val candidate = requestedResume ?: stored?.takeIf { settings.resumeEnabled && expectedSession == progressSession }?.let {
                     VideoResume(it.cid, it.page, it.resumePositionMs)
                 }
-                val resume = candidate?.takeIf { it.pageIndex(detail.pages) != null }
-                val index = resume?.pageIndex(detail.pages) ?: 0
-                val position = resume?.position(detail.pages.getOrNull(index)?.durationSeconds ?: 0) ?: 0
-                if (position > 0) {
-                    player.pause()
-                    _uiState.update { it.copy(pageIndex = index, resume = resume?.copy(positionMs = position)) }
-                } else {
-                    startPage(index, 0, resetIntent = false)
-                }
+                val start = videoPlaybackStart(detail.pages, candidate)
+                startPage(start.pageIndex, start.positionMs, resetIntent = false, resumeOffer = start.resumeOffer)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -266,14 +262,17 @@ class VideoPlayerViewModel(
         startPage(index, 0)
     }
 
-    fun resolveResume(continuePlayback: Boolean) {
+    fun resumeFromHistory() {
         val resume = _uiState.value.resume ?: return
         val index = resume.pageIndex(_uiState.value.detail?.pages.orEmpty()) ?: 0
         _uiState.update { it.copy(resume = null) }
-        startPage(index, if (continuePlayback) resume.positionMs else 0)
+        startPage(index, resume.positionMs)
     }
 
-    private fun startPage(index: Int, position: Long, resetIntent: Boolean = true) {
+    fun dismissResume() { _uiState.update { it.copy(resume = null) } }
+
+    private fun startPage(index: Int, position: Long, resetIntent: Boolean = true, resumeOffer: VideoResume? = null) {
+        if (exited) return
         saveProgress(forceReport = true)
         playJob?.cancel()
         danmakuJob?.cancel()
@@ -285,7 +284,7 @@ class VideoPlayerViewModel(
         pendingPosition = position
         lastReportAt = 0
         if (resetIntent) playbackIntent.setRequested(true)
-        _uiState.update { it.copy(stream = null, resume = null, playbackRequested = playbackIntent.shouldPlay) }
+        _uiState.update { it.copy(stream = null, resume = resumeOffer, playbackRequested = playbackIntent.shouldPlay) }
         playJob = viewModelScope.launch { playPage(index) }
     }
 
@@ -344,7 +343,7 @@ class VideoPlayerViewModel(
     }
 
     fun togglePlayPause() {
-        if (_uiState.value.resume != null) return
+        if (exited) return
         if (_uiState.value.switching || _uiState.value.stream == null) {
             playbackIntent.toggle()
             player.playWhenReady = playbackIntent.shouldPlay
@@ -355,11 +354,27 @@ class VideoPlayerViewModel(
         playbackIntent.setRequested(player.playWhenReady)
     }
 
-    fun onEnter() { playbackIntent.enter() }
+    fun onEnter() { if (!exited) playbackIntent.enter() }
     fun onLeave() {
         saveProgress(forceReport = true)
         playbackIntent.leave()
         player.pause()
+    }
+
+    fun exitPlayback() {
+        if (exited) return
+        onLeave()
+        exited = true
+        detailJob?.cancel()
+        playJob?.cancel()
+        danmakuJob?.cancel()
+        sleepJob?.cancel()
+        activeCid = 0
+        actuallyPlayed = false
+        player.stop()
+        player.clearMediaItems()
+        _uiState.update { it.copy(fullscreen = false, isPlaying = false, playbackRequested = false,
+            switching = false, resume = null) }
     }
 
     private fun saveProgress(forceReport: Boolean = false) {
@@ -644,6 +659,7 @@ class VideoPlayerViewModel(
     }
 
     private fun applyStream(stream: PlayableStream, keepPosition: Boolean) {
+        if (exited) return
         val resumeAt = if (keepPosition) player.currentPosition else pendingPosition
         val resumePlayback = playbackIntent.shouldPlay
         activeCid = 0

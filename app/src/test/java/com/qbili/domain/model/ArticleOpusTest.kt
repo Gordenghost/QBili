@@ -11,6 +11,47 @@ import org.junit.Test
 
 class ArticleOpusTest {
     @Test
+    fun `空文本段落保留换行而纯图片的空文本不产生未知内容`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":1,"text":{"nodes":[]},"pic":{"pics":[]}},
+            {"para_type":2,"text":{"nodes":[]},"pic":{"pics":[{"url":"//i0.hdslb.com/only.jpg"}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.startsWith("<p><br></p><figure>"))
+        assertFalse(rendered.html.contains("暂不支持"))
+    }
+
+    @Test
+    fun `文本段落的空图片标题分隔代码和列表字段不会吞掉文字`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":1,"heading":{"nodes":[]},"pic":{"pics":[]},"line":{},
+             "code":{"content":""},"list":{"items":[]},
+             "text":{"nodes":[{"word":{"words":"不能丢掉的正文","color":"#FFFFFF"}}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<p>不能丢掉的正文</p>"))
+        assertFalse(rendered.html.contains("<hr>"))
+        assertFalse(rendered.html.contains("color:#FFFFFF"))
+    }
+
+    @Test
+    fun `同一段落同时有文字与图片时两者都保留且主题黑白字不再隐形`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"text":{"nodes":[{"word":{"words":"图片说明","color":"#000000"}}]},
+             "pic":{"pics":[{"url":"//i0.hdslb.com/mixed.jpg"}]}},
+            {"text":{"nodes":[{"word":{"words":"彩色重点","color":"#fb7299"}}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<p>图片说明</p>"))
+        assertTrue(rendered.html.contains("https://i0.hdslb.com/mixed.jpg"))
+        assertTrue(rendered.html.indexOf("图片说明") < rendered.html.indexOf("mixed.jpg"))
+        assertTrue(rendered.html.contains("color:#fb7299"))
+    }
+
+    @Test
     fun `完整图文包含标题引用列表代码表情和跳转不会丢失内容`() {
         val paragraphs = Json.parseToJsonElement("""[
             {"para_type":8,"heading":{"nodes":[{"word":{"words":"标题"}}]}},

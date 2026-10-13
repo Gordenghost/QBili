@@ -10,6 +10,22 @@ import org.junit.Test
 
 class OpusMapperTest {
     @Test
+    fun `图文详情的默认空图片字段不会遮蔽文本段落`() {
+        val payload = Json.decodeFromString<OpusDetailDto>("""{"item":{"modules":[
+            {"module_content":{"paragraphs":[
+                {"para_type":1,"heading":{"nodes":[]},"pic":{"pics":[]},
+                 "text":{"nodes":[{"word":{"words":"图文正文"}},{"rich":{"text":"@作者"}}]}},
+                {"para_type":2,"text":{"nodes":[]},"pic":{"pics":[{"url":"//i0.hdslb.com/a.jpg"}]}}
+            ]}}
+        ]}}""")
+        val detail = payload.toOpusDetail("123")
+        assertTrue(detail.contentComplete)
+        assertTrue(detail.contentHtml.contains("图文正文@作者"))
+        assertTrue(detail.contentHtml.contains("https://i0.hdslb.com/a.jpg"))
+        assertEquals("图文正文@作者", (detail.blocks.first() as OpusBlock.Paragraph).text)
+    }
+
+    @Test
     fun `完整正文包含图片和格式且可移除外部打开入口`() {
         val payload = Json.decodeFromString<OpusDetailDto>("""{"item":{"modules":[
             {"module_content":{"paragraphs":[{"heading":{"nodes":[{"word":{"words":"完整标题"}}]}},{"pic":{"pics":[{"url":"//i0.hdslb.com/a.jpg"}]}}]}}

@@ -45,6 +45,16 @@ data class VideoResume(val cid: Long, val page: Int, val positionMs: Long) {
     }
 }
 
+data class VideoPlaybackStart(val pageIndex: Int, val positionMs: Long, val resumeOffer: VideoResume?)
+
+fun videoPlaybackStart(pages: List<VideoPage>, resume: VideoResume?): VideoPlaybackStart {
+    val index = resume?.pageIndex(pages) ?: 0
+    val position = resume?.position(pages.getOrNull(index)?.durationSeconds ?: 0) ?: 0
+    val offer = resume?.takeIf { it.pageIndex(pages) != null && position > 0 }
+        ?.copy(page = pages[index].index, positionMs = position)
+    return VideoPlaybackStart(index, 0, offer)
+}
+
 data class HistoryCursor(val max: Long = 0, val viewAt: Long = 0, val business: String = "")
 data class HistoryPage(val items: List<WatchHistoryItem>, val cursor: HistoryCursor, val hasMore: Boolean)
 

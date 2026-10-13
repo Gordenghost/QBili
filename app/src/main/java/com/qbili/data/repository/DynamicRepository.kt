@@ -1,5 +1,7 @@
 package com.qbili.data.repository
 
+import com.qbili.domain.model.DynamicAuthor
+
 import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.dto.requireData
 import com.qbili.data.remote.dto.DynamicFeedDto
@@ -24,8 +26,19 @@ class DynamicRepository(private val api: DynamicApi) {
 
     suspend fun space(mid: Long, offset: String? = null): DynamicPage {
         require(mid > 0)
-        return api.space(mid, OPUS_FEATURE, offset).requireData().toPage(offset)
+        val page = api.space(mid, OPUS_FEATURE, offset).requireData().toPage(offset)
+        return page.copy(posts = page.posts.filter { it.authorMid == mid })
     }
+
+    suspend fun followedAuthors(mid: Long, page: Int): AuthorPage {
+        require(mid > 0 && page > 0)
+        val data = api.followedAuthors(mid, page, 50, "desc").requireData()
+        return AuthorPage(data.list.filter { it.mid > 0 }.distinctBy { it.mid }
+            .map { DynamicAuthor(it.mid, it.uname, it.face) },
+            data.list.isNotEmpty() && page.toLong() * 50 < data.total)
+    }
+
+    data class AuthorPage(val authors: List<DynamicAuthor>, val hasMore: Boolean)
 
     suspend fun opusDetail(id: String): OpusDetail {
         require(id.isNotBlank() && id.all(Char::isDigit))

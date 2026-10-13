@@ -25,6 +25,8 @@ internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
                 val text = (element.objectValue("text")?.get("nodes") as? JsonArray).orEmpty()
                     .joinToString("") { node ->
                         (node as? JsonObject)?.objectValue("word")?.stringValue("words")
+                            ?: (node as? JsonObject)?.objectValue("rich")?.stringValue("text")
+                            ?: (node as? JsonObject)?.objectValue("rich")?.stringValue("orig_text")
                             ?: (node as? JsonObject)?.stringValue("text")
                             ?: ""
                     }.ifBlank { element.stringValue("text").orEmpty() }
@@ -41,12 +43,12 @@ internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
         .firstOrNull()?.stringValue("text")
         ?: modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_top") }
             .firstOrNull()?.stringValue("title")
-        ?: item?.stringValue("title").orEmpty()
+        ?: item.stringValue("title").orEmpty()
     val author = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_author") }
         .firstOrNull()?.stringValue("name").orEmpty()
     val authorMid = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_author") }
         .firstOrNull()?.stringValue("mid")?.toLongOrNull() ?: 0
-    val basic = item?.objectValue("basic")
+    val basic = item.objectValue("basic")
     val stats = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_stat") }
         .firstOrNull()
     return OpusDetail(

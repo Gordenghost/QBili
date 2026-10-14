@@ -1,6 +1,7 @@
 package com.qbili.ui.screen.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -78,6 +79,7 @@ fun PushSettingsScreen(onBack: () -> Unit, onManageKeywordsClick: (Recommendatio
             items(RecommendationFilterGroup.entries, key = { it.key }) { group ->
                 Row(
                     modifier = Modifier.fillMaxWidth().clickable { onManageKeywordsClick(group) }
+                        .background(MaterialTheme.colorScheme.surface)
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -95,7 +97,7 @@ fun PushSettingsScreen(onBack: () -> Unit, onManageKeywordsClick: (Recommendatio
                 item { Text("不再推荐的视频", style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp)) }
                 items(filters.hiddenVideos.sorted(), key = { "hidden-$it" }) { key ->
-                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(key, modifier = Modifier.weight(1f))
                         IconButton(onClick = { remove { store.showVideo(key) } }) {
                             Icon(Icons.Outlined.DeleteOutline, contentDescription = "恢复视频 $key")
@@ -107,7 +109,7 @@ fun PushSettingsScreen(onBack: () -> Unit, onManageKeywordsClick: (Recommendatio
                 item { Text("已拉黑 UP（UID）", style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp)) }
                 items(filters.blockedAuthors.sorted(), key = { "author-$it" }) { mid ->
-                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(mid.toString(), modifier = Modifier.weight(1f))
                         IconButton(onClick = { remove { store.unblockAuthor(mid) } }) {
                             Icon(Icons.Outlined.DeleteOutline, contentDescription = "移除本地屏蔽 $mid")

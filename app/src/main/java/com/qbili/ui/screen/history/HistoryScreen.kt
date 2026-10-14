@@ -1,5 +1,6 @@
 package com.qbili.ui.screen.history
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -154,7 +155,8 @@ fun HistoryScreen(onBack: () -> Unit, onLoginClick: () -> Unit,
 
 @Composable
 private fun HistoryRow(item: WatchHistoryItem, enabled: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(start = 16.dp, top = 10.dp, bottom = 10.dp),
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick)
+        .background(MaterialTheme.colorScheme.surface).padding(start = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
         AsyncImage(model = item.cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.width(112.dp).height(70.dp))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {

@@ -57,3 +57,5 @@ E:\environment\gradle-8.10.2\bin\gradle.bat -Dorg.gradle.java.home=E:/environmen
 动态支持关注 UP 搜索选择与独立空间分页，账号切换取消旧请求；头像／昵称可跳转空间。
 普通视频续播通过视频左侧按钮提供，不阻断播放；退出先停播清理，导航过渡解绑 TextureView 画面。
 图文正文按非空段落内容解析，空图片／标题等占位字段不得遮蔽文本；黑白文字跟随阅读主题。
+清爽白以灰色背景衬托纯白内容容器，默认 Card 对应的 surfaceContainerHighest 也必须为白色；
+聚焦内容不得使用 surfaceVariant 灰底，灰色仅用于背景、图片占位和次要元素，选中状态用文字／图标点缀。

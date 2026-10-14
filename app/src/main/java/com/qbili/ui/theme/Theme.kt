@@ -16,11 +16,11 @@ private val LightColors = lightColorScheme(
     onPrimaryContainer = LightOnPrimaryContainer,
     secondary = LightSecondary,
     onSecondary = LightOnSecondary,
-    secondaryContainer = Color(0xFFE5F6FD),
+    secondaryContainer = Color.White,
     onSecondaryContainer = Color(0xFF005A7A),
     tertiary = BiliPinkDark,
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFE8EF),
+    tertiaryContainer = Color.White,
     onTertiaryContainer = LightOnPrimaryContainer,
     background = LightBackground,
     onBackground = LightOnBackground,
@@ -34,10 +34,10 @@ private val LightColors = lightColorScheme(
     surfaceBright = Color.White,
     surfaceDim = Color(0xFFE3E5E7),
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFFAFAFA),
+    surfaceContainerLow = Color.White,
     surfaceContainer = Color.White,
-    surfaceContainerHigh = Color(0xFFF1F2F3),
-    surfaceContainerHighest = Color(0xFFEDEEEF),
+    surfaceContainerHigh = Color.White,
+    surfaceContainerHighest = Color.White,
 )
 
 private val DarkColors = darkColorScheme(

@@ -1,5 +1,6 @@
 package com.qbili.ui.screen.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -89,7 +90,7 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
                         enabled = mode != null && !saving,
                         role = Role.RadioButton,
                         onClick = { select(option) },
-                    ).padding(horizontal = 16.dp, vertical = 20.dp),
+                    ).background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {

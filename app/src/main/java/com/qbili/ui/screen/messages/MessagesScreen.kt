@@ -269,7 +269,7 @@ private fun MessageBubble(message: PrivateMessage, isMine: Boolean) {
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = if (isMine) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant,
+                else MaterialTheme.colorScheme.surface,
         ) {
             Text(message.text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
         }

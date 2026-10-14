@@ -38,8 +38,8 @@ class HistoryFilterTest {
     fun `内容类型与关键词同时生效`() {
         assertEquals(listOf(video), items.filterHistory("", HistoryContentType.VIDEO))
         assertEquals(listOf(season), items.filterHistory("", HistoryContentType.PGC))
-        assertEquals(listOf(article), items.filterHistory("", HistoryContentType.OTHER))
-        assertEquals(listOf(article), items.filterHistory("教程", HistoryContentType.OTHER))
+        assertEquals(listOf(article), items.filterHistory("", HistoryContentType.ARTICLE))
+        assertEquals(listOf(article), items.filterHistory("教程", HistoryContentType.ARTICLE))
         assertEquals(emptyList<WatchHistoryItem>(), items.filterHistory("kotlin", HistoryContentType.PGC))
     }
 
@@ -47,7 +47,20 @@ class HistoryFilterTest {
     fun `未知历史类型保留在其他分类中而非丢弃`() {
         val live = video.copy(id = 4, business = "live", title = "直播回顾")
         val unknown = video.copy(id = 5, business = "future_type", title = "新内容")
-        assertEquals(listOf(article, live, unknown), (items + live + unknown).filterHistory("", HistoryContentType.OTHER))
+        assertEquals(listOf(unknown), (items + live + unknown).filterHistory("", HistoryContentType.OTHER))
+        assertEquals(listOf(live), (items + live + unknown).filterHistory("", HistoryContentType.LIVE))
+    }
+
+    @Test
+    fun `文集图文和可信链接归入阅读分类且不会混入直播`() {
+        val collection = article.copy(id = 4, business = "article-list", cid = 42)
+        val opus = article.copy(id = 5, business = "opus", sourceUri = "https://www.bilibili.com/opus/555")
+        val linked = article.copy(id = 6, business = "future_type", sourceUri = "https://www.bilibili.com/read/cv66")
+        val live = article.copy(id = 7, business = "live", title = "直播")
+        val all = items + collection + opus + linked + live
+        assertEquals(listOf(article, collection, opus, linked), all.filterHistory("", HistoryContentType.ARTICLE))
+        assertEquals(listOf(live), all.filterHistory("", HistoryContentType.LIVE))
+        assertEquals(emptyList<WatchHistoryItem>(), all.filterHistory("", HistoryContentType.OTHER))
     }
 
     @Test

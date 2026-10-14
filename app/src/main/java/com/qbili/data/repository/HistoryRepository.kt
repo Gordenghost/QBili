@@ -40,6 +40,7 @@ class HistoryRepository(private val api: HistoryApi, private val sessions: State
                 author = item.authorName, viewedAt = item.viewAt, positionMs = item.progress.coerceAtLeast(0) * 1000,
                 durationSeconds = item.duration.coerceAtLeast(0), completed = item.progress == -1L,
                 episodeId = resource.epid,
+                sourceUri = item.uri,
             )
         }
         val next = data.cursor?.let { HistoryCursor(it.max, it.viewAt, it.business) }

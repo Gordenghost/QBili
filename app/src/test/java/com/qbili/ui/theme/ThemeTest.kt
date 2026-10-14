@@ -1,6 +1,7 @@
 package com.qbili.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.contentColorFor
 import androidx.compose.ui.graphics.luminance
 import org.junit.Assert.assertTrue
 import com.qbili.domain.model.ThemeMode
@@ -9,6 +10,18 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class ThemeTest {
+    @Test
+    fun `同为白色的内容容器不因主色容器匹配而变成红字`() {
+        listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT).forEach { mode ->
+            val scheme = qbiliColorScheme(mode, systemDark = false)
+            assertEquals(scheme.onSurface, scheme.contentColorFor(Color.White))
+            assertEquals(scheme.onSurface, scheme.onPrimaryContainer)
+            assertEquals(scheme.onSurface, scheme.onSecondaryContainer)
+            assertEquals(scheme.onSurface, scheme.onTertiaryContainer)
+            assertNotEquals(scheme.primary, scheme.contentColorFor(scheme.surface))
+        }
+    }
+
     @Test
     fun `跟随系统浅色时所有聚焦容器均亮于背景且保持白色`() {
         val scheme = qbiliColorScheme(ThemeMode.SYSTEM, systemDark = false)

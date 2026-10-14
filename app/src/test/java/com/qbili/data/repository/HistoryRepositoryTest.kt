@@ -10,6 +10,8 @@ import com.qbili.data.remote.dto.HistoryWriteResponse
 import com.qbili.data.remote.dto.PgcResponse
 import com.qbili.data.remote.dto.SeasonDetailDto
 import com.qbili.domain.model.HistoryCursor
+import com.qbili.domain.model.HistoryOpenTarget
+import com.qbili.domain.model.openTarget
 import com.qbili.domain.model.VideoProgress
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -92,6 +94,24 @@ class HistoryRepositoryTest {
         assertTrue(api.headers.all { it == "SESSDATA=session; bili_jct=csrf; DedeUserID=42" })
         repository.clear(session)
         assertEquals(1, api.clearCalls)
+    }
+
+    @Test
+    fun `非视频历史保留URI与资源ID文集打开CID删除仍使用KID`() = runBlocking {
+        val api = Api()
+        api.response = Json.decodeFromString<BiliResponse<HistoryDataDto>>("""{"code":0,"data":{"list":[
+            {"kid":99,"title":"文集文章","history":{"oid":10,"cid":42,"business":"article-list"},"view_at":100,"uri":"//www.bilibili.com/read/cv42"},
+            {"kid":98,"title":"图文","history":{"oid":0,"business":"future_type"},"view_at":90,"uri":"https://www.bilibili.com/opus/999999999999999999999999"},
+            {"kid":97,"title":"直播","history":{"oid":7,"business":"live"},"view_at":80,"uri":"https://live.bilibili.com/7"}
+        ],"cursor":{"max":7,"view_at":80,"business":"live"}}}""")
+        val repository = HistoryRepository(api, MutableStateFlow(session))
+        val results = repository.page(session).items
+        assertEquals(HistoryOpenTarget.Article(42), results[0].openTarget())
+        assertEquals("//www.bilibili.com/read/cv42", results[0].sourceUri)
+        assertEquals(HistoryOpenTarget.Opus("999999999999999999999999"), results[1].openTarget())
+        assertEquals(HistoryOpenTarget.Live(7), results[2].openTarget())
+        repository.delete(session, results[0])
+        assertEquals("article-list_99", api.deleted)
     }
 
     @Test

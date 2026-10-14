@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -40,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -192,6 +194,8 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
             }
         },
         modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,7 +203,8 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
                     modifier = Modifier.clickable(enabled = post.authorMid > 0, onClick = onAuthorClick))
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    TextButton(onClick = onAuthorClick) {
+                    TextButton(onClick = onAuthorClick, colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface)) {
                         Text(post.authorName.ifBlank { "UP 主" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text(listOfNotNull(

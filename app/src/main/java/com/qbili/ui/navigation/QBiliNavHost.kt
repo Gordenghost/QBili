@@ -217,6 +217,9 @@ fun QBiliNavHost(
             HistoryScreen(onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
                 onVideoClick = { navController.navigate(Route.buildVideo(it.videoId, it.resume)) },
+                onArticleClick = { navController.navigate(Route.buildArticle(it)) },
+                onOpusClick = { navController.navigate(Route.buildOpus(it)) },
+                onLiveClick = { navController.navigate(Route.buildLive(it)) },
                 onSeasonClick = { id, item -> navController.navigate(Route.buildSeason(id, item.episodeId,
                     if (item.completed) 0 else item.positionMs)) })
         }

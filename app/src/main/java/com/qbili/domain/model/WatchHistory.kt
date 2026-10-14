@@ -74,6 +74,7 @@ data class WatchHistoryItem(
     val durationSeconds: Int,
     val completed: Boolean,
     val episodeId: Long = 0,
+    val sourceUri: String = "",
 ) {
     val key: String get() = "$business:$id"
     val deleteKey: String get() = "${business}_$id"

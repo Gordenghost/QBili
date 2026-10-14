@@ -179,7 +179,7 @@ class HistoryViewModel(
         }
     }
 
-    fun unsupported() { mutableState.update { it.copy(message = "此类历史记录暂不支持打开，可删除或到官方客户端查看") } }
+    fun unsupported() { mutableState.update { it.copy(message = "此记录暂不支持打开或缺少有效资源信息，可到官方客户端查看") } }
     fun consumeMessage() { mutableState.update { it.copy(message = null) } }
     fun consumeTarget() { mutableState.update { it.copy(seasonTarget = null) } }
 

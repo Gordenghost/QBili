@@ -101,7 +101,7 @@ class DynamicRepositoryTest {
             {"id_str":"123","type":"DYNAMIC_TYPE_AV","modules":{
               "module_author":{"mid":42,"name":"UP主","face":"//face.jpg","pub_ts":100},
               "module_dynamic":{"desc":{"text":"投稿了"},"major":{"archive":
-              {"aid":9,"bvid":"BV1test","title":"视频","cover":"//cover.jpg"}}}}},
+              {"aid":9,"bvid":"BV1test","title":"视频","cover":"//cover.jpg","duration_text":"12:34"}}}}},
             {"id_str":"124","type":"DYNAMIC_TYPE_WORD","modules":{
               "module_author":{"mid":43,"name":"另一位"},
               "module_dynamic":{"desc":{"text":"一条文字动态"}}}}]}}""",
@@ -111,6 +111,7 @@ class DynamicRepositoryTest {
         assertEquals("next-page", page.next)
         assertEquals(2, page.posts.size)
         assertEquals("BV1test", page.posts.first().video?.key)
+        assertEquals(754, page.posts.first().video?.durationSeconds)
         assertEquals("投稿了", page.posts.first().text)
         assertEquals("一条文字动态", page.posts.last().text)
         assertNull(page.posts.last().video)

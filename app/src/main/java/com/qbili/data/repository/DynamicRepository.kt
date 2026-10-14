@@ -1,5 +1,6 @@
 package com.qbili.data.repository
 
+import com.qbili.core.parseDurationText
 import com.qbili.domain.model.DynamicAuthor
 
 import com.qbili.data.remote.api.DynamicApi
@@ -119,6 +120,7 @@ internal fun JsonElement.toPostOrNull(): DynamicPost? {
     val cover = archive?.text("cover") ?: images.firstOrNull().orEmpty()
     val video = if (bvid.isNotBlank() || aid > 0) VideoItem(
         aid = aid, bvid = bvid, title = title, cover = cover,
+        durationSeconds = parseDurationText(archive?.text("duration_text") ?: archive?.text("duration")),
         authorMid = original?.obj("modules")?.obj("module_author")?.text("mid")?.toLongOrNull()
             ?: authorMid,
         authorName = original?.obj("modules")?.obj("module_author")?.text("name")

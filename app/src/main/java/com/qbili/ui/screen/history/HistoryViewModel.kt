@@ -11,6 +11,7 @@ import com.qbili.data.remote.cookie.LoginCookies
 import com.qbili.data.repository.HistoryRepository
 import com.qbili.di.AppContainer
 import com.qbili.domain.model.HistoryCursor
+import com.qbili.domain.model.HistoryContentType
 import com.qbili.domain.model.VideoProgress
 import com.qbili.domain.model.WatchHistoryItem
 import com.qbili.domain.model.toHistoryItem
@@ -38,7 +39,12 @@ class HistoryViewModel(
         val message: String? = null,
         val seasonTarget: Pair<Long, WatchHistoryItem>? = null,
         val accountMid: Long = 0,
-    )
+        val query: String = "",
+        val contentType: HistoryContentType = HistoryContentType.ALL,
+    ) {
+        val filtering: Boolean get() = query.isNotBlank() || contentType != HistoryContentType.ALL
+        val autoLoadEnabled: Boolean get() = !local && !filtering && hasMore && !loading && !busy && error == null
+    }
     private val mutableState = MutableStateFlow(UiState())
     val state = mutableState.asStateFlow()
     private var session = LoginCookies.EMPTY
@@ -78,8 +84,21 @@ class HistoryViewModel(
         loadJob?.cancel()
         actionJob?.cancel()
         cursor = HistoryCursor()
-        mutableState.update { UiState(local = local, loggedIn = session.isLoggedIn, accountMid = session.mid ?: 0) }
+        mutableState.update { UiState(local = local, loggedIn = session.isLoggedIn, accountMid = session.mid ?: 0,
+            query = it.query, contentType = if (local) HistoryContentType.ALL else it.contentType) }
         refresh()
+    }
+
+    fun setQuery(query: String) {
+        mutableState.update { it.copy(query = query) }
+    }
+
+    fun selectContentType(contentType: HistoryContentType) {
+        mutableState.update { it.copy(contentType = contentType) }
+    }
+
+    fun clearFilters() {
+        mutableState.update { it.copy(query = "", contentType = HistoryContentType.ALL) }
     }
 
     fun refresh() {

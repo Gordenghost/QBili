@@ -23,12 +23,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -48,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
@@ -56,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.qbili.core.formatRelativeTime
+import com.qbili.core.formatDuration
 import com.qbili.core.normalizeUrl
 import com.qbili.domain.model.DynamicPost
 import com.qbili.domain.model.VideoItem
@@ -196,15 +202,24 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
                     TextButton(onClick = onAuthorClick) {
                         Text(post.authorName.ifBlank { "UP 主" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (post.publishedAt > 0) Text(formatRelativeTime(post.publishedAt),
+                    Text(listOfNotNull(
+                        post.publishedAt.takeIf { it > 0 }?.let { formatRelativeTime(it) },
+                        if (post.video != null) "视频动态" else null,
+                    ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (post.text.isNotBlank()) Text(formatDynamicText(post.text), maxLines = 8,
+            if (post.text.isNotBlank() && post.text != post.video?.title) Text(formatDynamicText(post.text), maxLines = 8,
                 overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 8.dp))
-            if (post.images.isNotEmpty()) {
+            val video = post.video
+            if (video != null) {
+                DynamicVideoCover(video, post.cover.ifBlank { video.cover })
+                if (video.title.isNotBlank()) Text(video.title, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp))
+            } else if (post.images.isNotEmpty()) {
                 val columns = post.images.size.coerceAtMost(3)
                 post.images.chunked(columns).forEach { rowImages ->
                     Row(
@@ -240,6 +255,22 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DynamicVideoCover(video: VideoItem, cover: String) {
+    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant)) {
+        AsyncImage(model = cover.biliThumbnail(720, 405), contentDescription = video.title,
+            contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+        Box(Modifier.fillMaxWidth().height(64.dp).align(Alignment.BottomCenter)
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
+        Text(if (video.durationSeconds > 0) "视频 · ${formatDuration(video.durationSeconds)}" else "视频",
+            color = Color.White, style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp))
+        Icon(Icons.Filled.PlayCircle, contentDescription = "播放视频", tint = Color.White,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).size(36.dp))
     }
 }
 

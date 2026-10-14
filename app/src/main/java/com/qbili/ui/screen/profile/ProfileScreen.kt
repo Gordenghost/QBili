@@ -40,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +82,11 @@ fun ProfileScreen(
 
     Scaffold(
         modifier = modifier,
-        topBar = { TopAppBar(title = { Text("我的") }) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = { TopAppBar(title = { Text("我的") }, colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+        )) },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -214,6 +219,7 @@ private fun UserHeader(profile: UserProfile, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -278,6 +284,7 @@ private fun MenuRow(icon: ImageVector, title: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,

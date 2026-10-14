@@ -31,6 +31,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,6 +80,10 @@ fun SpaceScreen(mid: Long, onBack: () -> Unit, onLoginClick: () -> Unit,
         topBar = {
             TopAppBar(
                 title = { Text(state.profile?.name ?: "个人主页") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
@@ -102,12 +107,13 @@ fun SpaceScreen(mid: Long, onBack: () -> Unit, onLoginClick: () -> Unit,
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(vertical = 12.dp),
+            contentPadding = PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             state.profile?.let { user ->
                 item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(
                                 model = user.face.biliAvatar(160),
@@ -150,7 +156,8 @@ fun SpaceScreen(mid: Long, onBack: () -> Unit, onLoginClick: () -> Unit,
             if (state.mid > 0) {
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         FilterChip(selected = selectedTab == 0, onClick = { selectedTab = 0 },
@@ -247,6 +254,7 @@ fun SpaceScreen(mid: Long, onBack: () -> Unit, onLoginClick: () -> Unit,
 private fun SpaceOpusRow(post: SpaceOpusItem, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,

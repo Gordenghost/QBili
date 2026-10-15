@@ -1,5 +1,7 @@
 package com.qbili.di
 
+import com.qbili.data.remote.dto.requireData
+
 import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.local.VideoProgressStore
 import com.qbili.data.remote.api.HistoryApi
@@ -221,7 +223,10 @@ class AppContainer(context: Context) {
         InteractionRepository(interactionApi, appInteractionApi, accessTokenStore)
     }
     val commentRepository: CommentRepository by lazy { CommentRepository(commentApi) }
-    val messageRepository: MessageRepository by lazy { MessageRepository(messageApi) }
+    val messageRepository: MessageRepository by lazy { MessageRepository(messageApi) { mid ->
+        val card = spaceApi.card(mid).requireData().card
+        card?.let { com.qbili.domain.model.MessageContact(it.name, it.face) }
+    } }
     val opusInteractionRepository: OpusInteractionRepository by lazy {
         OpusInteractionRepository(opusActionApi) { network.cookieJar.csrf() }
     }

@@ -5,6 +5,8 @@ import com.qbili.data.remote.api.MessageApi
 import com.qbili.data.remote.dto.BiliResponse
 import com.qbili.data.remote.dto.MessageHistoryDto
 import com.qbili.data.remote.dto.MessageSessionsDto
+import com.qbili.domain.model.MessageContact
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -16,6 +18,69 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MessageRepositoryTest {
+    @Test
+    fun `缺少账号资料时补查昵称头像且不改变会话分页游标`() = runBlocking {
+        val api = FakeApi().apply { sessionResponse = Json.decodeFromString("""{"data":{"has_more":1,"session_list":[
+            {"talker_id":42,"session_ts":300},{"talker_id":42,"session_ts":250},
+            {"talker_id":18,"session_type":2,"session_ts":200}]}}""") }
+        val lookedUp = mutableListOf<Long>()
+        val result = MessageRepository(api) { mid -> lookedUp += mid; MessageContact("真实昵称", "//avatar.jpg") }.sessions(500)
+        assertEquals(listOf(42L), lookedUp)
+        assertEquals("真实昵称", result.sessions.single().name)
+        assertEquals("//avatar.jpg", result.sessions.single().face)
+        assertFalse(result.sessions.single().profileUnavailable)
+        assertEquals(200L, result.next)
+    }
+
+    @Test
+    fun `接口已有昵称头像不重复查询兼容uname与face`() = runBlocking {
+        val api = FakeApi().apply { sessionResponse = Json.decodeFromString("""{"data":{"session_list":[
+            {"talker_id":42,"account_info":{"uname":"接口昵称","face":"//avatar.jpg"}}]}}""") }
+        var calls = 0
+        val result = MessageRepository(api) { calls++; null }.sessions()
+        assertEquals(0, calls)
+        assertEquals("接口昵称", result.sessions.single().name)
+        assertEquals("//avatar.jpg", result.sessions.single().face)
+    }
+
+    @Test
+    fun `补查失败只降级对应用户不吞取消且不覆盖已有昵称`() = runBlocking<Unit> {
+        val api = FakeApi().apply { sessionResponse = Json.decodeFromString("""{"data":{"session_list":[
+            {"talker_id":42,"account_info":{"name":"已有昵称"}}, {"talker_id":43}]}}""") }
+        val result = MessageRepository(api) { error("资料失败") }.sessions()
+        assertEquals(listOf("已有昵称", "用户43"), result.sessions.map { it.name })
+        assertFalse(result.sessions.first().profileUnavailable)
+        assertTrue(result.sessions.last().profileUnavailable)
+        assertThrows(CancellationException::class.java) {
+            runBlocking { MessageRepository(api) { throw CancellationException("取消") }.sessions() }
+        }
+    }
+
+    @Test
+    fun `图片和表情保留可信图床URL非法或缺失载荷明确占位`() = runBlocking {
+        val api = FakeApi().apply { historyResponse = Json.decodeFromString("""{"data":{"messages":[
+            {"msg_key":1,"msg_seqno":1,"msg_type":2,"content":"{\"url\":\"//i0.hdslb.com/image.jpg\"}"},
+            {"msg_key":2,"msg_seqno":2,"msg_type":6,"content":"{\"url\":\"https://i0.hdslb.com/doge.png\"}"},
+            {"msg_key":3,"msg_seqno":3,"msg_type":2,"content":"{\"url\":\"https://evil.test/image.jpg\"}"},
+            {"msg_key":4,"msg_seqno":4,"msg_type":2,"content":"not json"},
+            {"msg_key":5,"msg_seqno":5,"msg_type":6,"content":"{\"url\":\"javascript:alert(1)\"}"}
+        ]}}""") }
+        val result = MessageRepository(api).history(42).messages
+        assertEquals("https://i0.hdslb.com/image.jpg", result[0].imageUrl)
+        assertEquals("https://i0.hdslb.com/doge.png", result[1].imageUrl)
+        assertEquals(listOf("[图片]", "[表情]", "[图片]", "[图片]", "[表情]"), result.map { it.text })
+        assertTrue(result.drop(2).all { it.imageUrl == null })
+    }
+
+    @Test
+    fun `已撤回图片隐藏原图和原文不误展示内容`() = runBlocking {
+        val api = FakeApi().apply { historyResponse = Json.decodeFromString("""{"data":{"messages":[
+            {"msg_key":1,"msg_seqno":1,"msg_type":2,"msg_status":1,"content":"{\"url\":\"https://i0.hdslb.com/image.jpg\"}"},
+            {"msg_key":2,"msg_seqno":2,"msg_type":5,"content":"{}"}]}}""") }
+        val result = MessageRepository(api).history(42).messages
+        assertTrue(result.all { it.imageUrl == null && it.type == 5 && it.text == "[已撤回的消息]" })
+    }
+
     private class FakeApi : MessageApi {
         var sessionCursor: Long? = null
         var historyCursor: Long? = null

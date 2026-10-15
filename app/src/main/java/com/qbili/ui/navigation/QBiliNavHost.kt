@@ -191,6 +191,7 @@ fun QBiliNavHost(
             MessagesScreen(
                 onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
+                onAuthorClick = { navController.navigate(Route.buildSpace(it)) },
             )
         }
 

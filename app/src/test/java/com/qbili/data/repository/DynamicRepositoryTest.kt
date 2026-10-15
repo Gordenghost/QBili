@@ -7,6 +7,8 @@ import com.qbili.data.remote.dto.DynamicFeedDto
 import com.qbili.data.remote.dto.OpusDetailDto
 import com.qbili.data.remote.dto.DynamicAuthorsDto
 import com.qbili.data.remote.dto.DynamicAuthorDto
+import com.qbili.domain.model.linkedContent
+import com.qbili.domain.model.isForward
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.TimeZone
@@ -20,11 +22,78 @@ import org.junit.Test
 class DynamicRepositoryTest {
     private val json = Json { ignoreUnknownKeys = true }
 
+    @Test
+    fun `转发保留两层作者正文和原视频导航而非拼接成自己的视频`() {
+        val post = json.parseToJsonElement("""{"id_str":"900","type":"DYNAMIC_TYPE_FORWARD","modules":{
+            "module_author":{"mid":42,"name":"转发者","face":"//forward.jpg"},
+            "module_dynamic":{"desc":{"text":"我的转发说明"}}},"orig":{
+            "id_str":"800","type":"DYNAMIC_TYPE_AV","modules":{
+            "module_author":{"mid":43,"name":"原作者","face":"//original.jpg"},
+            "module_dynamic":{"desc":{"text":"原动态正文"},"major":{"archive":{
+            "aid":8,"bvid":"BV1Origin","title":"原视频","cover":"//cover.jpg"}}}}}}""").toPostOrNull()!!
+        assertTrue(post.isForward)
+        assertEquals(42L, post.authorMid)
+        assertEquals("我的转发说明", post.text)
+        assertNull(post.video)
+        assertEquals("800", post.original?.id)
+        assertEquals(43L, post.original?.authorMid)
+        assertEquals("原动态正文", post.original?.text)
+        assertEquals("BV1Origin", post.linkedContent.video?.key)
+        assertEquals(43L, post.linkedContent.video?.authorMid)
+    }
+
+    @Test
+    fun `转发原图文保持原图文ID图片并只用原ID补正文`() = runBlocking {
+        val api = FakeApi().apply {
+            response = json.decodeFromString("""{"data":{"items":[{"id_str":"900","type":"DYNAMIC_TYPE_FORWARD",
+            "modules":{"module_author":{"mid":42,"name":"转发者"},"module_dynamic":{"desc":{"text":"转发说明"}}},
+            "orig":{"id_str":"800","type":"DYNAMIC_TYPE_ARTICLE","modules":{
+            "module_author":{"mid":43,"name":"原作者"},"module_dynamic":{"major":{}}}}}]}}""")
+            detailResponse = json.decodeFromString("""{"data":{"item":{"modules":[
+            {"module_content":{"paragraphs":[{"text":{"nodes":[{"word":{"words":"原图文正文"}}]}},
+            {"pic":{"pics":[{"url":"//picture.jpg"}]}}]}}]}}}""")
+        }
+        val post = DynamicRepository(api).following().posts.single()
+        assertEquals("转发说明", post.text)
+        assertNull(post.opusId)
+        assertEquals("800", post.linkedContent.opusId)
+        assertEquals("原图文正文", post.original?.text)
+        assertEquals(listOf("//picture.jpg"), post.original?.images)
+        assertEquals("800", api.receivedDetailId)
+        assertEquals(1, api.detailCalls)
+    }
+
+    @Test
+    fun `原动态删除或缺失保留转发说明与不可见标记`() {
+        listOf("", "\"orig\":{\"id_str\":\"8\",\"type\":\"DYNAMIC_TYPE_NONE\"},").forEach { original ->
+            val post = json.parseToJsonElement("""{"id_str":"9","type":"DYNAMIC_TYPE_FORWARD",$original
+            "modules":{"module_author":{"mid":42},"module_dynamic":{"desc":{"text":"转发说明"}}}}""").toPostOrNull()!!
+            assertNull(post.original)
+            assertTrue(post.originalUnavailable)
+            assertEquals("转发说明", post.text)
+            assertNull(post.linkedContent.video)
+        }
+    }
+
+    @Test
+    fun `多层转发有界且保留直接转发关系`() {
+        var source = """{"id_str":"1","modules":{"module_author":{"mid":1},"module_dynamic":{"desc":{"text":"原文"}}}}"""
+        (2..8).forEach { number ->
+            source = """{"id_str":"$number","type":"DYNAMIC_TYPE_FORWARD","modules":{"module_author":{"mid":$number}},"orig":$source}"""
+        }
+        val post = json.parseToJsonElement(source).toPostOrNull()!!
+        assertEquals("8", post.id)
+        assertEquals("7", post.original?.id)
+        assertTrue(post.linkedContent.originalUnavailable)
+        assertEquals("5", post.linkedContent.id)
+    }
+
     private class FakeApi : DynamicApi {
         var response = BiliResponse<DynamicFeedDto>(data = DynamicFeedDto())
         var receivedOffset: String? = null
         var receivedMid: Long? = null
         var detailCalls = 0
+        var receivedDetailId: String? = null
         var detailResponse = BiliResponse<OpusDetailDto>(data = OpusDetailDto())
         var authorsResponse = BiliResponse(data = DynamicAuthorsDto())
         var receivedAuthorsPage: Int? = null
@@ -58,6 +127,7 @@ class DynamicRepositoryTest {
         override suspend fun opusDetail(id: String, features: String): BiliResponse<OpusDetailDto> {
             assertEquals("htmlNewStyle,itemOpusStyle", features)
             detailCalls++
+            receivedDetailId = id
             return detailResponse
         }
     }

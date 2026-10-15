@@ -6,30 +6,59 @@ import com.qbili.data.remote.dto.MessageTextDto
 import com.qbili.data.remote.dto.requireData
 import com.qbili.domain.model.PrivateConversation
 import com.qbili.domain.model.PrivateMessage
+import com.qbili.domain.model.MessageContact
+import com.qbili.domain.model.readerImageUrl
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-class MessageRepository(private val api: MessageApi) {
+class MessageRepository(private val api: MessageApi,
+    private val contactLookup: suspend (Long) -> MessageContact? = { null },
+) {
     private val deviceId = UUID.randomUUID().toString().uppercase()
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun sessions(endTs: Long? = null): SessionPage {
         val data = api.sessions(1, 1, 0, 2, PAGE_SIZE, endTs, 0, WEB_APP).requireData()
         val original = data.sessions.orEmpty()
-        return SessionPage(
+        val limiter = Semaphore(3)
+        val conversations = coroutineScope {
             original.filter { it.sessionType == 1 && it.systemType == 0 && it.talkerId > 0 }
-                .map { session ->
-                    PrivateConversation(
-                        talkerId = session.talkerId,
-                        name = session.account?.name?.takeIf { it.isNotBlank() } ?: "用户${session.talkerId}",
-                        face = session.account?.face.orEmpty(),
-                        preview = session.lastMessage?.displayText().orEmpty(),
-                        timestamp = session.lastMessage?.timestamp ?: 0,
-                        unreadCount = session.unreadCount,
-                        cursor = session.sessionTs,
-                    )
-                },
+                .distinctBy { it.talkerId }.map { session ->
+                    async {
+                        val existingName = session.account?.name.orEmpty().ifBlank { session.account?.uname.orEmpty() }
+                        val existingFace = session.account?.face.orEmpty().ifBlank { session.account?.faceUrl.orEmpty() }
+                        val contact = if (existingName.isBlank() || existingFace.isBlank()) limiter.withPermit {
+                            try { withTimeoutOrNull(3_000) { contactLookup(session.talkerId) } }
+                            catch (error: CancellationException) { throw error }
+                            catch (_: Exception) { null }
+                        } else null
+                        val name = existingName.ifBlank { contact?.name.orEmpty() }
+                        PrivateConversation(
+                            talkerId = session.talkerId,
+                            name = name.ifBlank { "用户${session.talkerId}" },
+                            face = existingFace.ifBlank { contact?.face.orEmpty() },
+                            preview = session.lastMessage?.displayText().orEmpty(),
+                            timestamp = session.lastMessage?.timestamp ?: 0,
+                            unreadCount = session.unreadCount,
+                            cursor = session.sessionTs,
+                            profileUnavailable = name.isBlank(),
+                        )
+                    }
+                }.awaitAll()
+        }
+        return SessionPage(
+            conversations,
             // 分页游标必须取原始列表末尾，过滤系统会话后仍需正确翻页。
             next = original.lastOrNull()?.sessionTs?.takeIf {
                 data.hasMore == 1 && it > 0 && it != endTs
@@ -43,7 +72,9 @@ class MessageRepository(private val api: MessageApi) {
         val original = data.messages.orEmpty()
         return HistoryPage(
             messages = original.filter { it.key > 0 }.map { entry ->
-                PrivateMessage(entry.key, entry.seqNo, entry.senderMid, entry.displayText(), entry.timestamp)
+                val image = if (entry.status != 1 && entry.type in setOf(2, 6)) entry.imageUrl() else null
+                PrivateMessage(entry.key, entry.seqNo, entry.senderMid, entry.displayText(), entry.timestamp,
+                    imageUrl = image, type = if (entry.status == 1) 5 else entry.type)
             }.sortedBy { it.seqNo },
             older = data.minSeqNo.takeIf {
                 data.hasMore == 1 && original.isNotEmpty() && it > 0 && it != endSeqNo
@@ -66,13 +97,20 @@ class MessageRepository(private val api: MessageApi) {
         ).requireData()
     }
 
-    private fun MessageEntryDto.displayText(): String = when (type) {
+    private fun MessageEntryDto.displayText(): String = if (status == 1) "[已撤回的消息]" else when (type) {
         1 -> runCatching { json.decodeFromString<MessageTextDto>(content).content }
             .getOrDefault("[文字消息无法显示]")
         2 -> "[图片]"
         5 -> "[已撤回的消息]"
         6 -> "[表情]"
         else -> "[其他类型的消息]"
+    }
+
+    private fun MessageEntryDto.imageUrl(): String? {
+        val payload = runCatching { json.parseToJsonElement(content) as? JsonObject }.getOrNull() ?: return null
+        return listOf("url", "image_url", "pic_url", "gif_url").firstNotNullOfOrNull { field ->
+            (payload[field] as? JsonPrimitive)?.contentOrNull?.let(::readerImageUrl)
+        }
     }
 
     data class SessionPage(val sessions: List<PrivateConversation>, val next: Long?)

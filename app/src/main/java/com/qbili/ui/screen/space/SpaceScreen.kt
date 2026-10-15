@@ -50,6 +50,7 @@ import coil.compose.AsyncImage
 import com.qbili.core.formatCount
 import com.qbili.domain.model.VideoItem
 import com.qbili.domain.model.SpaceOpusItem
+import com.qbili.domain.model.linkedContent
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.VideoListItem
 import com.qbili.ui.screen.dynamic.DynamicCard
@@ -174,10 +175,10 @@ fun SpaceScreen(mid: Long, onBack: () -> Unit, onLoginClick: () -> Unit,
                 }
                 if (selectedTab == 0) {
                     items(state.dynamics, key = { "dynamic-${it.id}" }) { post ->
-                        DynamicCard(post, onAuthorClick = { onAuthorClick(post.authorMid) },
-                            onVideoClick = { post.video?.let(onVideoClick) },
-                            onOpusClick = { post.opusId?.let(onOpusClick) },
-                            onArticleClick = { post.articleId?.let(onArticleClick) },
+                        DynamicCard(post, onAuthorClick = onAuthorClick,
+                            onVideoClick = { post.linkedContent.video?.let(onVideoClick) },
+                            onOpusClick = { post.linkedContent.opusId?.let(onOpusClick) },
+                            onArticleClick = { post.linkedContent.articleId?.let(onArticleClick) },
                             modifier = Modifier.padding(horizontal = 12.dp))
                     }
                     if (state.dynamicLoading) item { LoadingSpaceRow() }

@@ -24,6 +24,8 @@ data class MessageSessionDto(
 data class MessageAccountDto(
     val name: String = "",
     @SerialName("pic_url") val face: String = "",
+    val uname: String = "",
+    @SerialName("face") val faceUrl: String = "",
 )
 
 @Serializable
@@ -41,6 +43,7 @@ data class MessageEntryDto(
     @SerialName("msg_type") val type: Int = 0,
     val content: String = "",
     val timestamp: Long = 0,
+    @SerialName("msg_status") val status: Int = 0,
 )
 
 @Serializable

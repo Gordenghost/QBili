@@ -66,6 +66,8 @@ import com.qbili.core.formatRelativeTime
 import com.qbili.core.formatDuration
 import com.qbili.core.normalizeUrl
 import com.qbili.domain.model.DynamicPost
+import com.qbili.domain.model.linkedContent
+import com.qbili.domain.model.isForward
 import com.qbili.domain.model.VideoItem
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.AuthorAvatar
@@ -144,10 +146,10 @@ fun DynamicScreen(onLoginClick: () -> Unit, onAuthorClick: (Long) -> Unit,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(state.posts, key = { it.id }) { post ->
-                    DynamicCard(post, onAuthorClick = { onAuthorClick(post.authorMid) },
-                        onVideoClick = { post.video?.let(onVideoClick) },
-                        onOpusClick = { post.opusId?.let(onOpusClick) },
-                        onArticleClick = { post.articleId?.let(onArticleClick) })
+                    DynamicCard(post, onAuthorClick = onAuthorClick,
+                        onVideoClick = { post.linkedContent.video?.let(onVideoClick) },
+                        onOpusClick = { post.linkedContent.opusId?.let(onOpusClick) },
+                        onArticleClick = { post.linkedContent.articleId?.let(onArticleClick) })
                 }
                 if (state.loading) {
                     item {
@@ -178,7 +180,7 @@ fun DynamicScreen(onLoginClick: () -> Unit, onAuthorClick: (Long) -> Unit,
 }
 
 @Composable
-internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoClick: () -> Unit,
+internal fun DynamicCard(post: DynamicPost, onAuthorClick: (Long) -> Unit, onVideoClick: () -> Unit,
     onOpusClick: () -> Unit, onArticleClick: () -> Unit,
     modifier: Modifier = Modifier) {
     var selectedImage by remember(post.id) { mutableStateOf<String?>(null) }
@@ -188,9 +190,9 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
     Card(
         onClick = {
             when {
-                post.video != null -> onVideoClick()
-                post.articleId != null -> onArticleClick()
-                post.opusId != null -> onOpusClick()
+                post.linkedContent.video != null -> onVideoClick()
+                post.linkedContent.articleId != null -> onArticleClick()
+                post.linkedContent.opusId != null -> onOpusClick()
             }
         },
         modifier = modifier.fillMaxWidth(),
@@ -200,24 +202,37 @@ internal fun DynamicCard(post: DynamicPost, onAuthorClick: () -> Unit, onVideoCl
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorAvatar(post.authorFace, post.authorName,
-                    modifier = Modifier.clickable(enabled = post.authorMid > 0, onClick = onAuthorClick))
+                    modifier = Modifier.clickable(enabled = post.authorMid > 0) { onAuthorClick(post.authorMid) })
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    TextButton(onClick = onAuthorClick, colors = ButtonDefaults.textButtonColors(
+                    TextButton(onClick = { onAuthorClick(post.authorMid) }, enabled = post.authorMid > 0,
+                        colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurface)) {
                         Text(post.authorName.ifBlank { "UP 主" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text(listOfNotNull(
                         post.publishedAt.takeIf { it > 0 }?.let { formatRelativeTime(it) },
                         if (post.video != null) "视频动态" else null,
+                        if (post.original != null || post.originalUnavailable) "转发动态" else null,
                     ).joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (post.text.isNotBlank() && post.text != post.video?.title) Text(formatDynamicText(post.text), maxLines = 8,
+            if (post.text.isNotBlank() && post.text != post.video?.title) Text(formatDynamicText(post.text), maxLines = if (post.isForward) 4 else 8,
                 overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 8.dp))
+            if (post.original != null) {
+                HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+                Text("转发自 @${post.original.authorName.ifBlank { "原作者" }}",
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp))
+                DynamicCard(post.original, onAuthorClick, onVideoClick, onOpusClick, onArticleClick,
+                    modifier = Modifier.padding(start = 8.dp))
+            } else if (post.originalUnavailable) {
+                Text("原动态已删除、不可见或暂未返回", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp))
+            }
             val video = post.video
             if (video != null) {
                 DynamicVideoCover(video, post.cover.ifBlank { video.cover })

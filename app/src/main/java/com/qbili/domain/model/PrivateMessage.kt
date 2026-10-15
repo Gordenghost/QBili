@@ -8,6 +8,7 @@ data class PrivateConversation(
     val timestamp: Long,
     val unreadCount: Int,
     val cursor: Long,
+    val profileUnavailable: Boolean = false,
 )
 
 data class PrivateMessage(
@@ -16,4 +17,8 @@ data class PrivateMessage(
     val senderMid: Long,
     val text: String,
     val timestamp: Long,
+    val imageUrl: String? = null,
+    val type: Int = 1,
 )
+
+data class MessageContact(val name: String, val face: String)

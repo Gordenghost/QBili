@@ -13,11 +13,37 @@ import kotlinx.serialization.json.JsonElement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MessageRepositoryTest {
+    @Test
+    fun `会话摘要和聊天使用相同卡片解析撤回后不能跳转`() = runBlocking {
+        val content = """{"source":5,"id":42,"title":"分享视频"}"""
+        val api = FakeApi().apply {
+            val card = com.qbili.data.remote.dto.MessageEntryDto(key = 1, seqNo = 1, type = 7, content = content)
+            sessionResponse = BiliResponse(data = MessageSessionsDto(sessions = listOf(
+                com.qbili.data.remote.dto.MessageSessionDto(talkerId = 42, lastMessage = card),
+            )))
+            historyResponse = BiliResponse(data = MessageHistoryDto(messages = listOf(
+                card, card.copy(key = 2, seqNo = 2, status = 1),
+                card.copy(key = 3, seqNo = 3, type = 18, content = """{"content":"[{\"text\":\"系统提示\"}]"}"""),
+            )))
+        }
+        val repository = MessageRepository(api)
+        val preview = repository.sessions().sessions.single().preview
+        val messages = repository.history(42).messages
+        assertEquals("[视频] 分享视频", preview)
+        assertEquals(preview, messages.first().text)
+        assertEquals(com.qbili.domain.model.MessageOpenTarget.Video("av42"), messages.first().card?.links?.single()?.target)
+        assertEquals(5, messages[1].type)
+        assertNull(messages[1].card)
+        assertTrue(messages[2].systemNotice)
+        assertEquals("系统提示", messages[2].text)
+    }
+
     @Test
     fun `缺少账号资料时补查昵称头像且不改变会话分页游标`() = runBlocking {
         val api = FakeApi().apply { sessionResponse = Json.decodeFromString("""{"data":{"has_more":1,"session_list":[

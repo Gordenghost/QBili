@@ -1,13 +1,11 @@
 package com.qbili.data.repository
 
 import com.qbili.data.remote.api.MessageApi
-import com.qbili.data.remote.dto.MessageEntryDto
 import com.qbili.data.remote.dto.MessageTextDto
 import com.qbili.data.remote.dto.requireData
 import com.qbili.domain.model.PrivateConversation
 import com.qbili.domain.model.PrivateMessage
 import com.qbili.domain.model.MessageContact
-import com.qbili.domain.model.readerImageUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -15,9 +13,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -48,7 +43,9 @@ class MessageRepository(private val api: MessageApi,
                             talkerId = session.talkerId,
                             name = name.ifBlank { "用户${session.talkerId}" },
                             face = existingFace.ifBlank { contact?.face.orEmpty() },
-                            preview = session.lastMessage?.displayText().orEmpty(),
+                            preview = session.lastMessage?.let {
+                                MessageContentParser.parse(it.type, it.content, it.status).text
+                            }.orEmpty(),
                             timestamp = session.lastMessage?.timestamp ?: 0,
                             unreadCount = session.unreadCount,
                             cursor = session.sessionTs,
@@ -72,9 +69,10 @@ class MessageRepository(private val api: MessageApi,
         val original = data.messages.orEmpty()
         return HistoryPage(
             messages = original.filter { it.key > 0 }.map { entry ->
-                val image = if (entry.status != 1 && entry.type in setOf(2, 6)) entry.imageUrl() else null
-                PrivateMessage(entry.key, entry.seqNo, entry.senderMid, entry.displayText(), entry.timestamp,
-                    imageUrl = image, type = if (entry.status == 1) 5 else entry.type)
+                val content = MessageContentParser.parse(entry.type, entry.content, entry.status)
+                PrivateMessage(entry.key, entry.seqNo, entry.senderMid, content.text, entry.timestamp,
+                    imageUrl = content.imageUrl, type = if (entry.status == 1) 5 else entry.type,
+                    card = content.card, systemNotice = content.systemNotice)
             }.sortedBy { it.seqNo },
             older = data.minSeqNo.takeIf {
                 data.hasMore == 1 && original.isNotEmpty() && it > 0 && it != endSeqNo
@@ -95,22 +93,6 @@ class MessageRepository(private val api: MessageApi,
             timestamp = System.currentTimeMillis() / 1000,
             fromFirework = 0, build = 0, app = WEB_APP,
         ).requireData()
-    }
-
-    private fun MessageEntryDto.displayText(): String = if (status == 1) "[已撤回的消息]" else when (type) {
-        1 -> runCatching { json.decodeFromString<MessageTextDto>(content).content }
-            .getOrDefault("[文字消息无法显示]")
-        2 -> "[图片]"
-        5 -> "[已撤回的消息]"
-        6 -> "[表情]"
-        else -> "[其他类型的消息]"
-    }
-
-    private fun MessageEntryDto.imageUrl(): String? {
-        val payload = runCatching { json.parseToJsonElement(content) as? JsonObject }.getOrNull() ?: return null
-        return listOf("url", "image_url", "pic_url", "gif_url").firstNotNullOfOrNull { field ->
-            (payload[field] as? JsonPrimitive)?.contentOrNull?.let(::readerImageUrl)
-        }
     }
 
     data class SessionPage(val sessions: List<PrivateConversation>, val next: Long?)

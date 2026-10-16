@@ -19,6 +19,8 @@ data class PrivateMessage(
     val timestamp: Long,
     val imageUrl: String? = null,
     val type: Int = 1,
+    val card: MessageCard? = null,
+    val systemNotice: Boolean = false,
 )
 
 data class MessageContact(val name: String, val face: String)

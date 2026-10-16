@@ -29,6 +29,7 @@ import com.qbili.ui.screen.history.HistoryScreen
 import com.qbili.ui.screen.settings.PlaybackSettingsScreen
 import com.qbili.ui.screen.settings.ThemeSettingsScreen
 import com.qbili.domain.model.VideoResume
+import com.qbili.domain.model.MessageOpenTarget
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -192,6 +193,17 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
                 onAuthorClick = { navController.navigate(Route.buildSpace(it)) },
+                onContentClick = { target ->
+                    val route = when (target) {
+                        is MessageOpenTarget.Video -> Route.buildVideo(target.id)
+                        is MessageOpenTarget.Article -> Route.buildArticle(target.id)
+                        is MessageOpenTarget.Opus -> Route.buildOpus(target.id)
+                        is MessageOpenTarget.Live -> Route.buildLive(target.roomId)
+                        is MessageOpenTarget.Season -> Route.buildSeason(target.id)
+                        is MessageOpenTarget.Space -> Route.buildSpace(target.mid)
+                    }
+                    navController.navigate(route)
+                },
             )
         }
 

@@ -56,6 +56,7 @@ import coil.compose.AsyncImage
 import com.qbili.core.formatRelativeTime
 import com.qbili.domain.model.PrivateConversation
 import com.qbili.domain.model.PrivateMessage
+import com.qbili.domain.model.MessageOpenTarget
 import com.qbili.domain.model.MessageTimelineItem
 import com.qbili.domain.model.messageTimeline
 import com.qbili.domain.model.messageTimeLabel
@@ -66,7 +67,8 @@ import com.qbili.ui.LocalAppContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessagesScreen(onBack: () -> Unit, onLoginClick: () -> Unit, onAuthorClick: (Long) -> Unit) {
+fun MessagesScreen(onBack: () -> Unit, onLoginClick: () -> Unit, onAuthorClick: (Long) -> Unit,
+    onContentClick: (MessageOpenTarget) -> Unit) {
     val container = LocalAppContainer.current
     val viewModel: MessagesViewModel = viewModel(
         factory = remember(container) { MessagesViewModel.factory(container) },
@@ -162,7 +164,7 @@ fun MessagesScreen(onBack: () -> Unit, onLoginClick: () -> Unit, onAuthorClick: 
             )
             state.selected == null -> SessionList(state, viewModel, Modifier.padding(padding))
             else -> MessageThread(state, myMid, profile?.avatar.orEmpty(), profile?.name.orEmpty(),
-                viewModel, onAuthorClick, Modifier.padding(padding))
+                viewModel, onAuthorClick, onContentClick, Modifier.padding(padding))
         }
     }
 }
@@ -248,6 +250,7 @@ private fun MessageThread(
     myName: String,
     viewModel: MessagesViewModel,
     onAuthorClick: (Long) -> Unit,
+    onContentClick: (MessageOpenTarget) -> Unit,
     modifier: Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -278,7 +281,8 @@ private fun MessageThread(
                         face = if (isMine) myFace else contact?.face.orEmpty(),
                         name = if (isMine) myName.ifBlank { "我" } else contact?.name.orEmpty(),
                         onAuthorClick = { if (message.senderMid > 0) onAuthorClick(message.senderMid) },
-                        onImageClick = { selectedImage = message.imageUrl })
+                        onImageClick = { selectedImage = message.imageUrl },
+                        onContentClick = onContentClick)
                 }
             }
         }
@@ -307,9 +311,9 @@ private fun MessageThread(
 
 @Composable
 private fun MessageBubble(message: PrivateMessage, isMine: Boolean, face: String, name: String,
-    onAuthorClick: () -> Unit, onImageClick: () -> Unit) {
+    onAuthorClick: () -> Unit, onImageClick: () -> Unit, onContentClick: (MessageOpenTarget) -> Unit) {
     var imageFailed by remember(message.key, message.imageUrl) { mutableStateOf(false) }
-    if (message.type == 5) {
+    if (message.type == 5 || message.systemNotice) {
         Text(message.text, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -331,7 +335,10 @@ private fun MessageBubble(message: PrivateMessage, isMine: Boolean, face: String
                 contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 val image = message.imageUrl
-                if (image != null) {
+                val card = message.card
+                if (card != null) {
+                    MessageShareCard(card, onContentClick)
+                } else if (image != null) {
                     Box(
                         modifier = Modifier.widthIn(min = 96.dp, max = 220.dp)
                             .heightIn(min = 72.dp, max = 240.dp).clickable(onClick = onImageClick).padding(4.dp),

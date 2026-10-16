@@ -124,7 +124,7 @@ fun MainScreen(
                     homeReselections = homeReselections)
             }
             composable(TabRoute.RANKING) {
-                RankingScreen(onVideoClick = onVideoClick)
+                RankingScreen(onVideoClick = onVideoClick, onAuthorClick = onSpaceClick)
             }
             composable(TabRoute.DYNAMIC) {
                 DynamicScreen(

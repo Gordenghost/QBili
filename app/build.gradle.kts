@@ -60,6 +60,10 @@ android {
         }
     }
 
+    providers.gradleProperty("qbili.debugKeystore").orNull?.let { path ->
+        signingConfigs.getByName("debug").storeFile = file(path)
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -11,6 +11,12 @@ import com.qbili.data.remote.dto.RankingListDto
 import com.qbili.data.remote.dto.WeeklyIssueDto
 import com.qbili.data.remote.dto.WeeklyIssuesDto
 import com.qbili.domain.model.RankingCategory
+import com.qbili.domain.model.SeasonRankingCategory
+import com.qbili.domain.model.SeasonRankingPeriod
+import com.qbili.data.remote.dto.PgcResponse
+import com.qbili.data.remote.dto.SeasonRankingDto
+import com.qbili.data.remote.dto.SeasonRankingEntryDto
+import com.qbili.core.BiliRiskControlException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -25,6 +31,8 @@ class RankingRepositoryTest {
         var code = 0
         var requestedRegion = -1
         var requestedWeek = 0
+        val seasonRequests = mutableListOf<Triple<Boolean, Int, Int>>()
+        var seasonData = SeasonRankingDto(list = listOf(SeasonRankingEntryDto(seasonId = 42)), note = "正片榜")
         var rankingData = RankingListDto(list = listOf(PopularVideoDto(aid = 42)), note = "榜单说明")
         var weeks = WeeklyIssuesDto(list = listOf(
             WeeklyIssueDto(number = 3, name = "第3期", subject = "主题三", status = 2),
@@ -42,6 +50,16 @@ class RankingRepositoryTest {
         }
 
         override suspend fun weeklyIssues(): BiliResponse<WeeklyIssuesDto> = BiliResponse(code = code, data = weeks)
+
+        override suspend fun animationRanking(days: Int, seasonType: Int): PgcResponse<SeasonRankingDto> {
+            seasonRequests += Triple(true, days, seasonType)
+            return PgcResponse(code = code, result = seasonData)
+        }
+
+        override suspend fun cinemaRanking(days: Int, seasonType: Int): PgcResponse<SeasonRankingDto> {
+            seasonRequests += Triple(false, days, seasonType)
+            return PgcResponse(code = code, data = seasonData)
+        }
 
         override suspend fun weekly(number: Int): BiliResponse<RankingListDto> {
             requestedWeek = number
@@ -166,6 +184,72 @@ class RankingRepositoryTest {
         assertThrows(BiliApiException::class.java) { runBlocking { repository.weeklyIssues() } }
         assertThrows(BiliApiException::class.java) { runBlocking { repository.weekly(3) } }
         assertThrows(BiliApiException::class.java) { runBlocking { repository.precious() } }
+    }
+
+    @Test
+    fun `正片榜按season类型分流两套接口与三七日参数不混用投稿ID`() = runBlocking {
+        val api = FakeApi()
+        val repository = RankingRepository(api)
+        SeasonRankingCategory.entries.forEach { category ->
+            val result = repository.seasonRanking(category, SeasonRankingPeriod.THREE_DAYS)
+            assertEquals(42L, result.seasons.single().seasonId)
+            assertTrue(result.videos.isEmpty())
+            assertFalse(result.hasMore)
+            assertEquals("${category.label} · 近3日榜", result.title)
+            assertEquals("正片榜", result.description)
+        }
+        repository.seasonRanking(SeasonRankingCategory.MOVIE, SeasonRankingPeriod.WEEK)
+        assertEquals(listOf(Triple(true, 3, 1), Triple(false, 3, 4), Triple(false, 3, 2),
+            Triple(false, 3, 5), Triple(false, 3, 3), Triple(false, 3, 7), Triple(false, 7, 2)), api.seasonRequests)
+    }
+
+    @Test
+    fun `正片榜去重过滤非法seasonID保留平台排名且不使用epID`() = runBlocking {
+        val api = FakeApi().apply { seasonData = SeasonRankingDto(list = listOf(
+            SeasonRankingEntryDto(seasonId = 42, rank = 1), SeasonRankingEntryDto(seasonId = 0, rank = 2),
+            SeasonRankingEntryDto(seasonId = 43, rank = 3), SeasonRankingEntryDto(seasonId = 42, rank = 4),
+            SeasonRankingEntryDto(seasonId = 44),
+        )) }
+        val result = RankingRepository(api).seasonRanking(SeasonRankingCategory.ANIME, SeasonRankingPeriod.WEEK)
+        assertEquals(listOf(42L, 43L, 44L), result.seasons.map { it.seasonId })
+        assertEquals(listOf(1, 3, 5), result.seasons.map { it.rank })
+    }
+
+    @Test
+    fun `正片榜支持result或data结构且忽略未知字段`() {
+        val json = Json { ignoreUnknownKeys = true }
+        val template = """{"code":0,"PAYLOAD":{"note":"说明","list":[{"season_id":42,"ep_id":99,
+            "title":"番剧","rating":{"score":9.5},"new_ep":{"index_show":"更新至12集"},
+            "stat":{"view":100,"follow":8},"badge":"会员"}]}}"""
+        listOf("result", "data").forEach { field ->
+            val result = json.decodeFromString<PgcResponse<SeasonRankingDto>>(template.replace("PAYLOAD", field)).requireResult()
+            val item = result.list!!.single().toRankingItem(1)
+            assertEquals(42L, item.seasonId)
+            assertEquals(9.5, item.score!!, 0.0)
+            assertEquals("更新至12集", item.progress)
+            assertEquals("会员", item.badge)
+            assertEquals(100L, item.viewCount)
+        }
+    }
+
+    @Test
+    fun `正片榜非零错误缺列表与零码风控不能当作成功空内容`() {
+        val api = FakeApi()
+        val repository = RankingRepository(api)
+        api.code = -352
+        assertThrows(BiliApiException::class.java) { runBlocking {
+            repository.seasonRanking(SeasonRankingCategory.ANIME, SeasonRankingPeriod.THREE_DAYS)
+        } }
+        api.code = 0; api.seasonData = SeasonRankingDto()
+        assertThrows(BiliApiException::class.java) { runBlocking {
+            repository.seasonRanking(SeasonRankingCategory.MOVIE, SeasonRankingPeriod.WEEK)
+        } }
+        api.seasonData = SeasonRankingDto(voucher = "challenge")
+        assertThrows(BiliRiskControlException::class.java) { runBlocking {
+            repository.seasonRanking(SeasonRankingCategory.ANIME, SeasonRankingPeriod.WEEK)
+        } }
+        api.seasonData = SeasonRankingDto(list = emptyList())
+        assertTrue(runBlocking { repository.seasonRanking(SeasonRankingCategory.MOVIE, SeasonRankingPeriod.WEEK) }.seasons.isEmpty())
     }
 
     @Test

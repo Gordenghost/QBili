@@ -1,7 +1,7 @@
 package com.qbili.domain.model
 
 enum class RankingTab(val label: String) {
-    POPULAR("综合热门"), WEEKLY("每周必看"), PRECIOUS("入站必刷"), RANKING("排行榜"),
+    POPULAR("综合热门"), WEEKLY("每周必看"), PRECIOUS("入站必刷"), RANKING("排行榜"), PGC("番剧影视"),
 }
 
 enum class RankingCategory(val rid: Int, val label: String) {

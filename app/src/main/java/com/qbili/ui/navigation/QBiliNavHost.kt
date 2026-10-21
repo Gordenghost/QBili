@@ -56,6 +56,7 @@ fun QBiliNavHost(
                 onSettingsClick = { navController.navigate(Route.SETTINGS) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
                 onArticleClick = { navController.navigate(Route.buildArticle(it)) },
+                onSeasonClick = { navController.navigate(Route.buildSeason(it)) },
             )
         }
 

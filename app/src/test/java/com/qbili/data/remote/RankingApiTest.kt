@@ -27,9 +27,11 @@ class RankingApiTest {
         val api = Retrofit.Builder().baseUrl("https://api.bilibili.com/").client(client)
             .addConverterFactory(Json.asConverterFactory("application/json".toMediaType())).build().create(RankingApi::class.java)
         api.popular(2, 20); api.ranking(4, "all", "333.934"); api.weeklyIssues(); api.weekly(394); api.precious()
+        api.animationRanking(3, 1); api.cinemaRanking(7, 2)
         assertEquals(listOf("/x/web-interface/popular", "/x/web-interface/ranking/v2",
             "/x/web-interface/popular/series/list", "/x/web-interface/popular/series/one",
-            "/x/web-interface/popular/precious"), requests.map { it.url.encodedPath })
+            "/x/web-interface/popular/precious", "/pgc/web/rank/list", "/pgc/season/rank/web/list"),
+            requests.map { it.url.encodedPath })
         assertEquals("2", requests[0].url.queryParameter("pn"))
         assertEquals("20", requests[0].url.queryParameter("ps"))
         assertEquals("4", requests[1].url.queryParameter("rid"))
@@ -37,7 +39,15 @@ class RankingApiTest {
         assertEquals("333.934", requests[1].url.queryParameter("web_location"))
         assertEquals("394", requests[3].url.queryParameter("number"))
         assertNull(requests[0].header(ApiConstants.HEADER_NEED_WBI))
-        requests.drop(1).forEach { assertEquals("1", it.header(ApiConstants.HEADER_NEED_WBI)) }
+        requests.subList(1, 5).forEach { assertEquals("1", it.header(ApiConstants.HEADER_NEED_WBI)) }
+        assertEquals("3", requests[5].url.queryParameter("day"))
+        assertEquals("1", requests[5].url.queryParameter("season_type"))
+        assertEquals("7", requests[6].url.queryParameter("day"))
+        assertEquals("2", requests[6].url.queryParameter("season_type"))
+        requests.drop(5).forEach {
+            assertNull(it.header(ApiConstants.HEADER_NEED_WBI))
+            assertNull(it.url.queryParameter("rid"))
+        }
         requests.forEach { assertEquals("GET", it.method); assertNull(it.url.queryParameter("access_key")) }
     }
 }

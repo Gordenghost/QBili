@@ -95,6 +95,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -102,6 +104,7 @@ import com.qbili.core.formatCount
 import com.qbili.core.formatDuration
 import com.qbili.core.formatRelativeTime
 import com.qbili.domain.model.FavFolder
+import com.qbili.domain.model.DanmakuTarget
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.FullScreenError
 import com.qbili.ui.component.FullScreenLoading
@@ -133,11 +136,37 @@ fun VideoPlayerScreen(
         factory = remember { VideoPlayerViewModel.factory(container, context) },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val composer: DanmakuComposerViewModel = viewModel(factory = remember(container) {
+        viewModelFactory {
+            initializer {
+                DanmakuComposerViewModel(container.sessionManager.loginCookies, container.danmakuPostRepository::send)
+            }
+        }
+    })
+    val composerState by composer.uiState.collectAsStateWithLifecycle()
+    val target = state.detail?.let { detail -> state.currentPage?.let { page ->
+        DanmakuTarget(detail.aid, detail.bvid, page.cid, page.durationSeconds * 1000L)
+    } }
+    LaunchedEffect(target) { composer.setTarget(target) }
+    DisposableEffect(composer) { onDispose { composer.setTarget(null) } }
+    LaunchedEffect(composerState.notice) {
+        composerState.notice?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            composer.consumeNotice()
+        }
+    }
+    val openComposer: () -> Unit = {
+        if (!state.switching && state.stream != null) {
+            composer.setTarget(target)
+            composer.open(viewModel.player.currentPosition)
+        }
+    }
     var exiting by remember(viewModel) { mutableStateOf(false) }
 
     fun leave() {
         if (exiting) return
         exiting = true
+        composer.setTarget(null)
         viewModel.exitPlayback()
         onBack()
     }
@@ -172,6 +201,7 @@ fun VideoPlayerScreen(
             viewModel = viewModel,
             state = state,
             exiting = exiting,
+            onSendDanmaku = openComposer,
             onBack = { if (state.fullscreen) viewModel.setFullscreen(false) else leave() },
             modifier = if (state.fullscreen) {
                 Modifier.fillMaxSize()
@@ -194,10 +224,15 @@ fun VideoPlayerScreen(
                     viewModel = viewModel,
                     onAuthorClick = onAuthorClick,
                     onCommentsClick = onCommentsClick,
+                    onSendDanmaku = openComposer,
                 )
             }
         }
     }
+    DanmakuComposerDialog(composerState, composer, onSend = {
+        if (target != composerState.target || state.switching || exiting) composer.setTarget(target)
+        else composer.send()
+    })
 }
 
 /**
@@ -244,6 +279,7 @@ private fun PlayerSurface(
     state: VideoPlayerViewModel.UiState,
     onBack: () -> Unit,
     exiting: Boolean,
+    onSendDanmaku: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
@@ -386,6 +422,11 @@ private fun PlayerSurface(
                 )
                 Spacer(Modifier.width(6.dp))
             }
+            if (state.fullscreen && controlsVisible) {
+                IconButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching) {
+                    Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = "发送弹幕", tint = Color.White)
+                }
+            }
             IconButton(onClick = viewModel::toggleFullscreen) {
                 Icon(
                     if (state.fullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
@@ -410,6 +451,7 @@ private fun VideoInfoPane(
     viewModel: VideoPlayerViewModel,
     onAuthorClick: (Long) -> Unit,
     onCommentsClick: (Long) -> Unit,
+    onSendDanmaku: () -> Unit,
 ) {
     val detail = state.detail ?: return
     val context = LocalContext.current
@@ -499,6 +541,12 @@ private fun VideoInfoPane(
             viewModel = viewModel,
             onOpenDanmakuSettings = { showDanmakuSettings = true },
         )
+        OutlinedButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching,
+            modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("发送弹幕")
+        }
 
         Spacer(Modifier.height(10.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)

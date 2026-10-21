@@ -64,6 +64,7 @@ fun MainScreen(
     onSettingsClick: () -> Unit,
     onOpusClick: (String) -> Unit,
     onArticleClick: (Long) -> Unit,
+    onSeasonClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tabNavController = rememberNavController()
@@ -124,7 +125,7 @@ fun MainScreen(
                     homeReselections = homeReselections)
             }
             composable(TabRoute.RANKING) {
-                RankingScreen(onVideoClick = onVideoClick, onAuthorClick = onSpaceClick)
+                RankingScreen(onVideoClick = onVideoClick, onAuthorClick = onSpaceClick, onSeasonClick = onSeasonClick)
             }
             composable(TabRoute.DYNAMIC) {
                 DynamicScreen(

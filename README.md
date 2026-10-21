@@ -15,6 +15,7 @@
 - **更多历史入口**：专栏与文集文章可进入阅读页，图文通过明确的图文业务 ID 或可信 B站图文链接进入详情，直播可进入对应直播间；直播不是回放，也不会恢复历史直播进度。无法识别或缺少资源信息的记录保留明确提示，不会当成普通视频打开；课程等内容暂不支持。
 - **番剧／影视**：搜索结果可进入番剧详情，查看正片及花絮分集，支持 PGC 播放、画质／编码、倍速、弹幕、切集、本集评论、追番／取消追番及本机断点续播；会员试看与地区／购买限制明确提示，不绕过平台鉴权。
 - **视频互动**：点赞、收藏、投币、关注、稍后再看和评论／回复等；评论及楼中楼显示用户头像，点击头像或昵称进入个人主页。部分能力受登录方式与接口权限限制。
+- **发送弹幕**：普通视频支持滚动／顶部／底部弹幕及白、粉、黄、蓝四色；竖屏在播放设置下进入，全屏通过播放器右上角弹幕按钮进入。发送位置固定为打开输入框时的当前分 P 进度，支持预览与最多 100 字；需要登录且 Cookie 包含 CSRF。失败保留草稿、不会自动重发，账号或分 P 切换清除旧输入；等级、颜色权限、频率和审核以 B站服务端为准，不伪造即时上屏。暂未扩展到番剧、直播或高级弹幕。
 - **UP 主空间**：个人资料、动态、视频投稿和独立图文栏目。
 - **关注动态筛选**：点击动态卡片的头像或昵称进入 UP 主页；顶部「按 UP 筛选」可搜索昵称／UID并分页加载关注列表，选择后独立分页读取该 UP 的动态，点击「全部动态」恢复关注流。切换账号清空旧筛选和列表。
 - **动态视频标识**：视频动态显示「视频动态」标签，16:9 封面带播放图标及接口返回的时长，标题单独展示；点击整张卡片进入视频。图文图片仍支持独立点击预览，不显示视频标识。
@@ -24,7 +25,8 @@
 - **私信分享卡片与通知**：分享消息、视频／专栏推送及直播等分享显示标题、可信图床封面、作者、摘要和 UP 赠言，点击卡片可进入已有视频、专栏、图文、直播、番剧／影视或个人主页页面；通知显示正文模块与站内按钮，系统提示居中显示。会话列表也显示分享标题。仅使用明确业务 ID 或精确站内 HTTP(S) 链接，暂不解析短链、外链和客户端协议；动态 ID 不推测为图文 ID，单集 ep ID 不推测为番剧 season ID，未知目标明确提示暂不支持。撤回消息不保留卡片或跳转入口。
 - **图文与专栏**：图文／专栏富文本阅读，支持标题、列表、引用、代码及表情；图片点击预览、双指缩放、双击放大、上下张切换与下载保存，动态图片使用同一预览器；支持评论、点赞和收藏。
 - **其他模块**：热门／排行榜、收藏夹、稍后再看、私信和直播。
-- **热门栏目**：综合热门支持下拉刷新、滚动分页和失败重试；每周必看默认加载最新已发布期数，可按期数／日期／主题搜索往期；入站必刷展示经典精选；排行榜支持全站及动画、音乐、游戏等投稿分区，排名置于封面角标。卡片显示时长、播放／弹幕数和精选理由，点击 UP 名称进入主页，提供回到顶部按钮。榜单不是个人推荐，其他栏目不伪造分页；暂不包含番剧／影视正片榜及全站音乐榜。接口风控或数据缺失时明确提示，可手动重试。
+- **热门栏目**：综合热门支持下拉刷新、滚动分页和失败重试；每周必看默认加载最新已发布期数，可按期数／日期／主题搜索往期；入站必刷展示经典精选；排行榜支持全站及动画、音乐、游戏等投稿分区，排名置于封面角标。卡片显示时长、播放／弹幕数和精选理由，点击 UP 名称进入主页，提供回到顶部按钮。榜单不是个人推荐，其他栏目不伪造分页；暂不包含全站音乐榜。接口风控或数据缺失时明确提示，可手动重试。
+- **番剧影视榜**：「热门 → 番剧影视」提供番剧、国产动画、电影、电视剧、纪录片与综艺正片榜，可切换近3日／近7日。卡片显示平台排名、封面及实际返回的评分、更新进度、权限标签和播放／追看数，缺失字段不推测；点击按 season ID 进入已有详情，复用选集、追番和本机续播。榜单不代表播放授权，会员／付费／地区限制仍以详情与播放接口为准；切换榜单取消旧请求，刷新失败保留旧列表，支持手动重试。
 - **关于与更新**：在「我的 → 设置 → 关于」查看应用介绍、当前版本、GitHub 主页、开源协议与免责声明；手动检查 GitHub 最新正式发布版本，有更新时提供匹配安装类型的 APK 下载链接。
 - **主题选择**：在「我的 → 设置 → 主题选择」切换跟随系统、清爽白或深色；立即生效并在本机保存。清爽白使用白色卡片、浅灰背景和粉色／蓝色点缀，系统浅色也采用此配色。
 
@@ -112,10 +114,47 @@ gradle assembleDebug --console=plain
 
 也可以调用本机 Gradle 的完整路径，并通过 `-Dorg.gradle.java.home=本机JDK17目录` 指定 JDK。此类绝对路径仅用于本机命令或用户级 Gradle 配置，不写入仓库的 `gradle.properties`。
 
+### 国内网络与依赖镜像
+
+清理 Gradle 缓存后，可以联网重新下载依赖，不要使用 `--offline`。如果只能访问国内网络，可通过 `dependencyMirror` 选择国内 Maven 镜像，插件和应用依赖都会一起切换：
+
+```powershell
+gradle -PdependencyMirror=aliyun --refresh-dependencies testDebugUnitTest assembleDebug --console=plain
+```
+
+- `aliyun`：阿里云的 Google、Maven Central 和 Gradle 插件镜像，使用 `https://maven.aliyun.com/repository/google`、`https://maven.aliyun.com/repository/central` 和 `https://maven.aliyun.com/repository/gradle-plugin`。
+- `huawei`：华为云 Maven 聚合镜像，使用 `https://repo.huaweicloud.com/repository/maven/`；阿里云不可用时，将命令参数改成 `-PdependencyMirror=huawei` 重试。
+- `official`：默认值，保留官方 Google、Maven Central 和 Gradle 插件仓库。不传参数或指定 `-PdependencyMirror=official` 即恢复官方源。
+
+镜像模式只配置所选国内仓库，不再回退国外仓库。镜像由第三方维护，可能同步延迟或缺少特定构件；仓库地址配置完成不代表依赖已下载或构建通过。全局 Gradle 初始化脚本也可能覆盖仓库配置。
+
+该开关只影响 Maven 依赖，不影响 Gradle Wrapper 分发包或 Android SDK 下载。国内网络下优先使用已经安装的 Gradle 8.10.2，并提前准备 JDK 17 与 Android SDK Platform 35、所需 Build Tools。保留现有版本、HTTPS 和 Wrapper SHA-256 校验，不因镜像问题降低版本或关闭校验。
+
+首次下载或切换镜像时可使用 `--refresh-dependencies`；缓存齐全后无需每次添加。若提示 `SocketException: Permission denied`，需先解除当前执行环境的联网限制，仅更换镜像不能解决网络权限问题。
+
+### 受限环境的离线构建
+
+如果普通终端能构建，而受限执行环境无法联网，可先在普通终端下载依赖到项目内缓存，随后使用同一目录离线构建。两次构建必须选择同一镜像，否则已有缓存可能无法解析。
+
+普通终端准备缓存（JDK 17 和 Gradle 8.10.2 已配置）：
+
+```powershell
+gradle --gradle-user-home app/build/local-gradle-home -PdependencyMirror=aliyun testDebugUnitTest assembleDebug --console=plain
+```
+
+缓存齐全后，在受限环境执行：
+
+```powershell
+gradle --gradle-user-home app/build/local-gradle-home --offline -PdependencyMirror=aliyun '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon testDebugUnitTest assembleDebug --console=plain
+```
+
+`--no-daemon` 只控制 Gradle，不会禁用 Kotlin 编译守护进程。如果日志出现 `AccessDeniedException` 并指向用户目录下的 `kotlin/daemon`，进程内编译参数可避免启动该独立守护进程；此参数仅用于受限环境，不改变普通开发的默认配置。PowerShell 中带点的 `-P` / `-D` 参数需要加引号，避免被拆成任务名。缓存位于已忽略的构建目录，执行 `clean` 或手动清理该目录后可能需要重新下载依赖；离线模式不能补齐缺失依赖。
+
 ### APK 与版本号
 
 - Debug APK：`app/build/outputs/apk/debug/app-debug.apk`。
 - Debug 包名：`com.qbili.debug`；通常只能覆盖包名与签名均相同的旧版。不同开发者生成的 debug 签名可能不同，不能保证相互覆盖安装。
+- 发布更新前需与上一正式 Release 比较 APK 签名。原 debug 密钥可通过本机命令参数 `'-Pqbili.debugKeystore=本机密钥路径'` 指定；仅适用于原标准 Android debug 密钥，路径不写入共享配置，密钥不得提交。不能以重新生成的密钥冒充可覆盖安装的更新。
 - Release 尚未配置签名，未签名产物不能直接用于安装分发；不要上传签名密钥或密码。
 - `version.properties` 中的 `baseVersion` 是基础版本，`buildNumber` 在每次执行 `preBuild` 时自动递增。`versionName = baseVersion.buildNumber`，构建日志显示本次 `versionCode`。测试任务若触发 `preBuild`，也可能推进版本号。
 - APK、构建目录、缓存和日志不会作为源码提交。仓库创建本身不代表已经发布 GitHub Release。

@@ -25,6 +25,7 @@ data class PgcResponse<T>(
         val voucher = when (payload) {
             is SeasonDetailDto -> payload.voucher
             is SeasonPlayurlDto -> payload.voucher
+            is SeasonRankingDto -> payload.voucher
             is JsonObject -> (payload["v_voucher"] as? JsonPrimitive)?.content
             else -> null
         }

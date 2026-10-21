@@ -12,6 +12,9 @@ import com.qbili.domain.model.RankingCategory
 import com.qbili.domain.model.RankingTab
 import com.qbili.domain.model.VideoItem
 import com.qbili.domain.model.WeeklyIssue
+import com.qbili.domain.model.SeasonRankingCategory
+import com.qbili.domain.model.SeasonRankingItem
+import com.qbili.domain.model.SeasonRankingPeriod
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -26,9 +29,12 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
     data class UiState(
         val tab: RankingTab = RankingTab.POPULAR,
         val category: RankingCategory = RankingCategory.ALL,
+        val seasonCategory: SeasonRankingCategory = SeasonRankingCategory.ANIME,
+        val seasonPeriod: SeasonRankingPeriod = SeasonRankingPeriod.THREE_DAYS,
         val issues: List<WeeklyIssue> = emptyList(),
         val weeklyNumber: Int = 0,
         val videos: List<VideoItem> = emptyList(),
+        val seasons: List<SeasonRankingItem> = emptyList(),
         val title: String = "",
         val description: String = "",
         val page: Int = 0,
@@ -37,7 +43,9 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
         val refreshing: Boolean = false,
         val error: String? = null,
         val failedPage: Int? = null,
-    )
+    ) {
+        val hasContent: Boolean get() = videos.isNotEmpty() || seasons.isNotEmpty()
+    }
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.asStateFlow()
@@ -55,6 +63,16 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
         reset { it.copy(category = category) }
     }
 
+    fun selectSeasonCategory(category: SeasonRankingCategory) {
+        if (_uiState.value.tab != RankingTab.PGC || _uiState.value.seasonCategory == category) return
+        reset { it.copy(seasonCategory = category) }
+    }
+
+    fun selectSeasonPeriod(period: SeasonRankingPeriod) {
+        if (_uiState.value.tab != RankingTab.PGC || _uiState.value.seasonPeriod == period) return
+        reset { it.copy(seasonPeriod = period) }
+    }
+
     fun selectWeek(number: Int) {
         val state = _uiState.value
         if (state.tab != RankingTab.WEEKLY || state.weeklyNumber == number || state.issues.none { it.number == number }) return
@@ -64,7 +82,7 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
     private fun reset(select: (UiState) -> UiState) {
         generation++
         loadJob?.cancel()
-        _uiState.update { select(it).copy(videos = emptyList(), title = "", description = "",
+        _uiState.update { select(it).copy(videos = emptyList(), seasons = emptyList(), title = "", description = "",
             page = 0, hasMore = false, loading = false, refreshing = false, error = null, failedPage = null) }
         load(1, refresh = true, reloadIssues = _uiState.value.issues.isEmpty())
     }
@@ -98,6 +116,7 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
                     RankingTab.POPULAR -> repository.popular(page)
                     RankingTab.RANKING -> repository.ranking(request.category)
                     RankingTab.PRECIOUS -> repository.precious()
+                    RankingTab.PGC -> repository.seasonRanking(request.seasonCategory, request.seasonPeriod)
                     RankingTab.WEEKLY -> {
                         val issues = if (reloadIssues) repository.weeklyIssues() else request.issues
                         currentCoroutineContext().ensureActive()
@@ -113,7 +132,7 @@ class RankingViewModel(private val repository: RankingRepository, private val sc
                 if (token != generation) return@launch
                 _uiState.update { state ->
                     val videos = (if (refresh) result.videos else state.videos + result.videos).distinctBy { it.aid }
-                    state.copy(videos = videos, page = page,
+                    state.copy(videos = videos, seasons = result.seasons, page = page,
                         hasMore = request.tab == RankingTab.POPULAR && result.hasMore &&
                             (refresh || videos.size > state.videos.size),
                         title = result.title, description = result.description,

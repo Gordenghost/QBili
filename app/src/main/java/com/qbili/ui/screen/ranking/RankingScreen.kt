@@ -65,6 +65,8 @@ import com.qbili.domain.model.RankingCategory
 import com.qbili.domain.model.RankingTab
 import com.qbili.domain.model.VideoItem
 import com.qbili.domain.model.WeeklyIssue
+import com.qbili.domain.model.SeasonRankingCategory
+import com.qbili.domain.model.SeasonRankingPeriod
 import com.qbili.domain.model.filterWeeklyIssues
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.util.biliThumbnail
@@ -73,7 +75,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Unit) {
+fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Unit, onSeasonClick: (Long) -> Unit) {
     val container = LocalAppContainer.current
     val viewModel: RankingViewModel = viewModel(factory = remember(container) { RankingViewModel.factory(container) })
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -85,7 +87,9 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
     LaunchedEffect(viewModel) {
         if (viewModel.uiState.value.page == 0 && !viewModel.uiState.value.loading) viewModel.refresh()
     }
-    LaunchedEffect(state.tab, state.category, state.weeklyNumber) { listState.scrollToItem(0) }
+    LaunchedEffect(state.tab, state.category, state.weeklyNumber, state.seasonCategory, state.seasonPeriod) {
+        listState.scrollToItem(0)
+    }
     LaunchedEffect(state.tab, state.videos.size, state.loading, state.hasMore, state.error) {
         if (state.tab == RankingTab.POPULAR && !state.loading && state.hasMore && state.error == null) {
             snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
@@ -124,12 +128,27 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
             }
         },
     ) { padding ->
-        PullToRefreshBox(isRefreshing = state.refreshing && state.videos.isNotEmpty(), onRefresh = viewModel::refresh,
+        PullToRefreshBox(isRefreshing = state.refreshing && state.hasContent, onRefresh = viewModel::refresh,
             modifier = Modifier.fillMaxSize().padding(padding)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "controls") {
                     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 8.dp)) {
+                        if (state.tab == RankingTab.PGC) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SeasonRankingCategory.entries.forEach { category ->
+                                    FilterChip(selected = state.seasonCategory == category,
+                                        onClick = { viewModel.selectSeasonCategory(category) }, label = { Text(category.label) })
+                                }
+                            }
+                            Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SeasonRankingPeriod.entries.forEach { period ->
+                                    FilterChip(selected = state.seasonPeriod == period,
+                                        onClick = { viewModel.selectSeasonPeriod(period) }, label = { Text(period.label) })
+                                }
+                            }
+                        }
                         if (state.tab == RankingTab.RANKING) Row(
                             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -149,6 +168,7 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
                         val heading = state.title.ifBlank {
                             when (state.tab) {
                                 RankingTab.RANKING -> "${state.category.label}投稿排行榜"
+                                RankingTab.PGC -> "${state.seasonCategory.label} · ${state.seasonPeriod.label}榜"
                                 else -> state.tab.label
                             }
                         }
@@ -160,6 +180,7 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
                                 RankingTab.WEEKLY -> "精选每周视频，可搜索期数、日期或主题"
                                 RankingTab.PRECIOUS -> "B站精选经典视频"
                                 RankingTab.RANKING -> "按稿件质量与近期数据综合排序；不是个人推荐"
+                                RankingTab.PGC -> "平台正片榜；点击作品进入详情。评分、更新与权限以平台返回为准"
                             }
                         }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -169,7 +190,10 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
                     RankingVideoRow(item, rank = (index + 1).takeIf { state.tab == RankingTab.RANKING },
                         onClick = { onVideoClick(item) }, onAuthorClick = { onAuthorClick(item.authorMid) })
                 }
-                if (state.loading && !(state.refreshing && state.videos.isNotEmpty())) item(key = "loading") {
+                items(state.seasons, key = { "season:${it.seasonId}" }) { season ->
+                    SeasonRankingCard(season, onClick = { onSeasonClick(season.seasonId) })
+                }
+                if (state.loading && !(state.refreshing && state.hasContent)) item(key = "loading") {
                     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
                 if (state.error != null) item(key = "error") {
@@ -182,7 +206,8 @@ fun RankingScreen(onVideoClick: (VideoItem) -> Unit, onAuthorClick: (Long) -> Un
                     item(key = "footer") {
                         if (state.hasMore) OutlinedButton(onClick = viewModel::loadMore,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { Text("加载更多") }
-                        else Text(if (state.videos.isEmpty()) "暂无内容" else "已显示全部 ${state.videos.size} 个视频",
+                        else Text(if (!state.hasContent) "暂无内容" else if (state.tab == RankingTab.PGC)
+                            "已显示全部 ${state.seasons.size} 部作品" else "已显示全部 ${state.videos.size} 个视频",
                             modifier = Modifier.fillMaxWidth().padding(20.dp),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center)

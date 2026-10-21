@@ -7,6 +7,9 @@ import com.qbili.data.remote.dto.PopularVideoDto
 import com.qbili.domain.model.RankingCategory
 import com.qbili.domain.model.WeeklyIssue
 import com.qbili.domain.model.VideoItem
+import com.qbili.domain.model.SeasonRankingCategory
+import com.qbili.domain.model.SeasonRankingItem
+import com.qbili.domain.model.SeasonRankingPeriod
 
 class RankingRepository(private val api: RankingApi) {
     suspend fun popular(page: Int): RankingPage {
@@ -46,6 +49,18 @@ class RankingRepository(private val api: RankingApi) {
         return RankingPage(data.list.requireVideos(), false, data.explain, data.title)
     }
 
+    suspend fun seasonRanking(category: SeasonRankingCategory, period: SeasonRankingPeriod): RankingPage {
+        val response = if (category.legacyRankEndpoint) api.animationRanking(period.days, category.seasonType)
+            else api.cinemaRanking(period.days, category.seasonType)
+        val data = response.requireResult()
+        val list = data.list ?: throw BiliApiException(-1, "番剧影视榜未返回作品列表，请重试")
+        val seen = mutableSetOf<Long>()
+        val seasons = list.mapIndexedNotNull { index, item ->
+            if (item.seasonId <= 0 || !seen.add(item.seasonId)) null else item.toRankingItem(index + 1)
+        }
+        return RankingPage(emptyList(), false, data.note, "${category.label} · ${period.label}榜", seasons)
+    }
+
     private fun List<PopularVideoDto>?.requireVideos(): List<VideoItem> =
         (this ?: throw BiliApiException(-1, "接口未返回视频列表，请重试")).videos()
 
@@ -53,7 +68,7 @@ class RankingRepository(private val api: RankingApi) {
         .distinctBy { it.aid }.map { it.toVideoItem() }
 
     data class RankingPage(val videos: List<VideoItem>, val hasMore: Boolean,
-        val description: String = "", val title: String = "")
+        val description: String = "", val title: String = "", val seasons: List<SeasonRankingItem> = emptyList())
 
     companion object {
         const val PAGE_SIZE = 20

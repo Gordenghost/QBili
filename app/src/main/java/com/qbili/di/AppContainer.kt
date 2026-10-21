@@ -219,6 +219,13 @@ class AppContainer(context: Context) {
         }
     }
     val danmakuRepository: DanmakuRepository by lazy { DanmakuRepository(videoApi) }
+    val danmakuPostRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
+            .retryOnConnectionFailure(false).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.DanmakuPostApi::class.java)
+        com.qbili.data.repository.DanmakuPostRepository(api, network.cookieJar.loginState)
+    }
     val interactionRepository: InteractionRepository by lazy {
         InteractionRepository(interactionApi, appInteractionApi, accessTokenStore)
     }

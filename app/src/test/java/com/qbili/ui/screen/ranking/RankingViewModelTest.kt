@@ -10,6 +10,11 @@ import com.qbili.data.remote.dto.WeeklyIssuesDto
 import com.qbili.data.repository.RankingRepository
 import com.qbili.domain.model.RankingCategory
 import com.qbili.domain.model.RankingTab
+import com.qbili.domain.model.SeasonRankingCategory
+import com.qbili.domain.model.SeasonRankingPeriod
+import com.qbili.data.remote.dto.PgcResponse
+import com.qbili.data.remote.dto.SeasonRankingDto
+import com.qbili.data.remote.dto.SeasonRankingEntryDto
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +46,20 @@ class RankingViewModelTest {
         var issues = listOf(WeeklyIssueDto(number = 2, status = 2), WeeklyIssueDto(number = 1, status = 2))
         var issueCalls = 0
         var issuesFailure = false
+        val seasonRequests = mutableListOf<Pair<Int, Int>>()
+        var seasonCall: suspend (Int, Int) -> PgcResponse<SeasonRankingDto> = { days, type ->
+            PgcResponse(result = SeasonRankingDto(list = listOf(SeasonRankingEntryDto(seasonId = type * 100L + days))))
+        }
+
+        override suspend fun animationRanking(days: Int, seasonType: Int): PgcResponse<SeasonRankingDto> {
+            seasonRequests += days to seasonType
+            return seasonCall(days, seasonType)
+        }
+
+        override suspend fun cinemaRanking(days: Int, seasonType: Int): PgcResponse<SeasonRankingDto> {
+            seasonRequests += days to seasonType
+            return seasonCall(days, seasonType)
+        }
 
         override suspend fun popular(page: Int, pageSize: Int): BiliResponse<PopularPageDto> {
             popularPages += page
@@ -60,6 +79,69 @@ class RankingViewModelTest {
             return weeklyCall(number)
         }
         override suspend fun precious() = BiliResponse(data = RankingListDto(list = listOf(PopularVideoDto(aid = 99))))
+    }
+
+    @Test
+    fun `正片榜默认番剧三日选择类型周期保留且不伪造分页`() = runBlocking {
+        val api = Api()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val model = RankingViewModel(RankingRepository(api), scope)
+            model.selectTab(RankingTab.PGC)
+            assertEquals(103L, model.uiState.value.seasons.single().seasonId)
+            assertTrue(model.uiState.value.hasContent)
+            assertTrue(model.uiState.value.videos.isEmpty())
+            model.selectSeasonCategory(SeasonRankingCategory.MOVIE)
+            model.selectSeasonPeriod(SeasonRankingPeriod.WEEK)
+            assertEquals(207L, model.uiState.value.seasons.single().seasonId)
+            model.loadMore()
+            assertEquals(listOf(3 to 1, 3 to 2, 7 to 2), api.seasonRequests)
+            assertFalse(model.uiState.value.hasMore)
+            model.selectTab(RankingTab.POPULAR)
+            assertTrue(model.uiState.value.seasons.isEmpty())
+            model.selectTab(RankingTab.PGC)
+            assertEquals(SeasonRankingCategory.MOVIE, model.uiState.value.seasonCategory)
+            assertEquals(SeasonRankingPeriod.WEEK, model.uiState.value.seasonPeriod)
+            assertEquals(207L, model.uiState.value.seasons.single().seasonId)
+        } finally { scope.cancel() }
+    }
+
+    @Test
+    fun `正片切换周期旧请求忽略取消也不能覆盖新榜单`() = runBlocking {
+        val delayed = CompletableDeferred<PgcResponse<SeasonRankingDto>>()
+        val api = Api().apply { seasonCall = { days, _ ->
+            if (days == 3) withContext(NonCancellable) { delayed.await() }
+            else PgcResponse(data = SeasonRankingDto(list = listOf(SeasonRankingEntryDto(seasonId = 7))))
+        } }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val model = RankingViewModel(RankingRepository(api), scope)
+            model.selectTab(RankingTab.PGC); model.selectSeasonPeriod(SeasonRankingPeriod.WEEK)
+            delayed.complete(PgcResponse(result = SeasonRankingDto(list = listOf(SeasonRankingEntryDto(seasonId = 3)))))
+            assertEquals(7L, model.uiState.value.seasons.single().seasonId)
+            assertFalse(model.uiState.value.loading)
+            assertNull(model.uiState.value.error)
+        } finally { scope.cancel() }
+    }
+
+    @Test
+    fun `正片刷新失败保留原榜单重试当前类型与周期`() = runBlocking {
+        var fail = false
+        val api = Api().apply { seasonCall = { _, _ ->
+            if (fail) error("刷新失败") else PgcResponse(result = SeasonRankingDto(list = listOf(SeasonRankingEntryDto(seasonId = 42))))
+        } }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val model = RankingViewModel(RankingRepository(api), scope)
+            model.selectTab(RankingTab.PGC)
+            fail = true; model.refresh()
+            assertEquals(42L, model.uiState.value.seasons.single().seasonId)
+            assertTrue(model.uiState.value.hasContent)
+            assertNotNull(model.uiState.value.error)
+            fail = false; model.retry()
+            assertNull(model.uiState.value.error)
+            assertEquals(listOf(3 to 1, 3 to 1, 3 to 1), api.seasonRequests)
+        } finally { scope.cancel() }
     }
 
     @Test

@@ -17,6 +17,11 @@ E:\environment\gradle-8.10.2\bin\gradle.bat -Dorg.gradle.java.home=E:/environmen
 共享的 `gradle.properties` 不记录本机绝对路径。使用 JDK 17：本机命令通过
 `-Dorg.gradle.java.home` 指定目录，其他环境可配置 `JAVA_HOME` 或 Android Studio 的 Gradle JDK。
 
+受限环境先复用已恢复的 `app/build/local-gradle-home` 缓存与下载时相同的镜像，
+使用 `--gradle-user-home app/build/local-gradle-home --offline -PdependencyMirror=aliyun`，
+并加 `'-Pkotlin.compiler.execution.strategy=in-process' --no-daemon`，避免联网及 Kotlin 守护进程写入用户目录。
+首次下载需在可联网的普通终端完成，命令见 README 的「受限环境的离线构建」。
+
 ## 打包约定（重要）
 
 1. **每次对话结束前必须执行一次 `assembleDebug` 打包**，让用户拿到包含本次修改的 APK。
@@ -71,6 +76,15 @@ URI 限定 HTTP(S)、精确域名和标准端口，无用户信息；删除仍�
 切换栏目／分区／期数取消并隔离旧请求；刷新失败保留当前列表，分页失败重试原页，不自动重试错误；
 重复分页去重并停止无新增页，缺失列表视为异常而非成功无内容，风控按错误提示不绕过。
 后续重点为播放互动完善和课程等更多内容类型支持。
+第20阶段番剧影视正片榜：独立栏目按 season_type 分流，番剧用 pgc/web/rank/list，
+国创／电影／电视剧／纪录片／综艺用 pgc/season/rank/web/list；
+支持近3日／7日；以 season_id 跳转已有详情，不混用 ep_id、media_id 或投稿 rid。
+排名保留接口顺序与返回值，缺排名用原始位置；评分／更新／权限标识仅用有效返回字段，缺失不推测免费。
+结果兼容 result／data，零码 v_voucher 仍报风控；缺失列表报错，刷新失败保留旧榜，切换隔离旧请求。
+第21阶段普通视频发送弹幕：滚动／顶部／底部、四色预览、单行最多100字，打开输入框时固定当前CID和进度。
+显式固定账号Cookie与CSRF，WBI只签查询且不改正文，关闭写请求网络重试；成功必须有有效dmid。
+账号／分P／退出隔离旧发送，失败保留草稿不自动重发，成功后清草稿且冷却5秒；不伪造审核通过或即时上屏。
+发版前对照上一正式Release签名，原标准debug密钥通过本机 `'-Pqbili.debugKeystore=路径'` 传入，不提交密钥。
 图文／专栏／动态使用统一图片预览器（缩放／保存），图文复用安全 WebView 富文本排版；
 仅未知正文保留外部完整阅读入口。评论与楼中楼头像、昵称支持跳转空间。
 主题使用本机 DataStore 保存跟随系统／清爽白／深色选择，根页面统一应用配色与系统栏明暗；

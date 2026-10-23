@@ -51,6 +51,8 @@ import androidx.compose.material.icons.outlined.ThumbDownOffAlt
 import androidx.compose.material.icons.outlined.WatchLater
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
@@ -105,6 +107,8 @@ import com.qbili.core.formatDuration
 import com.qbili.core.formatRelativeTime
 import com.qbili.domain.model.FavFolder
 import com.qbili.domain.model.DanmakuTarget
+import com.qbili.domain.model.VideoItem
+import com.qbili.domain.player.adjacentVideoPage
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.FullScreenError
 import com.qbili.ui.component.FullScreenLoading
@@ -127,6 +131,7 @@ fun VideoPlayerScreen(
     onBack: () -> Unit,
     onAuthorClick: (Long) -> Unit,
     onCommentsClick: (Long) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
     initialResume: VideoResume? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -136,6 +141,15 @@ fun VideoPlayerScreen(
         factory = remember { VideoPlayerViewModel.factory(container, context) },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val related: RelatedVideoViewModel = viewModel(factory = remember(container) {
+        viewModelFactory {
+            initializer { RelatedVideoViewModel(container.sessionManager.loginCookies, container.relatedVideoRepository::load) }
+        }
+    })
+    val relatedState by related.uiState.collectAsStateWithLifecycle()
+    val relatedTarget = state.detail?.let { RelatedVideoTarget(it.aid, it.bvid) }
+    LaunchedEffect(relatedTarget) { related.setTarget(relatedTarget) }
+    DisposableEffect(related) { onDispose { related.setTarget(null) } }
     val composer: DanmakuComposerViewModel = viewModel(factory = remember(container) {
         viewModelFactory {
             initializer {
@@ -167,6 +181,7 @@ fun VideoPlayerScreen(
         if (exiting) return
         exiting = true
         composer.setTarget(null)
+        related.setTarget(null)
         viewModel.exitPlayback()
         onBack()
     }
@@ -225,6 +240,13 @@ fun VideoPlayerScreen(
                     onAuthorClick = onAuthorClick,
                     onCommentsClick = onCommentsClick,
                     onSendDanmaku = openComposer,
+                    relatedState = relatedState,
+                    onRefreshRelated = related::refresh,
+                    onVideoClick = { item ->
+                        composer.close()
+                        viewModel.onLeave()
+                        onVideoClick(item)
+                    },
                 )
             }
         }
@@ -423,6 +445,16 @@ private fun PlayerSurface(
                 Spacer(Modifier.width(6.dp))
             }
             if (state.fullscreen && controlsVisible) {
+                if (state.detail?.isMultiPage == true) {
+                    IconButton(onClick = { viewModel.adjacentPage(-1) }, enabled = !state.switching &&
+                        adjacentVideoPage(state.pageIndex, state.detail.pages.size, -1) != null) {
+                        Icon(Icons.Outlined.SkipPrevious, contentDescription = "上一 P", tint = Color.White)
+                    }
+                    IconButton(onClick = { viewModel.adjacentPage(1) }, enabled = !state.switching &&
+                        adjacentVideoPage(state.pageIndex, state.detail.pages.size, 1) != null) {
+                        Icon(Icons.Outlined.SkipNext, contentDescription = "下一 P", tint = Color.White)
+                    }
+                }
                 IconButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching) {
                     Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = "发送弹幕", tint = Color.White)
                 }
@@ -452,6 +484,9 @@ private fun VideoInfoPane(
     onAuthorClick: (Long) -> Unit,
     onCommentsClick: (Long) -> Unit,
     onSendDanmaku: () -> Unit,
+    relatedState: RelatedVideoViewModel.UiState,
+    onRefreshRelated: () -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
 ) {
     val detail = state.detail ?: return
     val context = LocalContext.current
@@ -468,143 +503,156 @@ private fun VideoInfoPane(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
     ) {
-        Spacer(Modifier.height(12.dp))
-        Text(detail.title, style = MaterialTheme.typography.titleMedium)
+        item(key = "video_details:${detail.aid}") {
+            Column {
+                Spacer(Modifier.height(12.dp))
+                Text(detail.title, style = MaterialTheme.typography.titleMedium)
 
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            MetaText(Icons.Outlined.PlayArrow, formatCount(detail.viewCount))
-            Spacer(Modifier.width(10.dp))
-            MetaText(Icons.AutoMirrored.Outlined.Comment, formatCount(detail.danmakuCount))
-            Spacer(Modifier.width(10.dp))
-            MetaText(Icons.Outlined.ThumbUpOffAlt, formatCount(detail.likeCount))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                formatRelativeTime(detail.pubDate),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            AsyncImage(
-                model = detail.authorFace.biliAvatar(),
-                contentDescription = detail.authorName,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable(enabled = detail.authorMid > 0) { onAuthorClick(detail.authorMid) },
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                detail.authorName,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-                    .clickable(enabled = detail.authorMid > 0) { onAuthorClick(detail.authorMid) }
-                    .padding(vertical = 12.dp),
-            )
-            AssistChip(
-                onClick = { onAuthorClick(detail.authorMid) },
-                label = { Text("主页", style = MaterialTheme.typography.labelSmall) },
-            )
-            Spacer(Modifier.width(6.dp))
-            FilterChip(
-                selected = state.interaction.following,
-                onClick = viewModel::toggleFollow,
-                enabled = !state.interactionBusy,
-                label = {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    MetaText(Icons.Outlined.PlayArrow, formatCount(detail.viewCount))
+                    Spacer(Modifier.width(10.dp))
+                    MetaText(Icons.AutoMirrored.Outlined.Comment, formatCount(detail.danmakuCount))
+                    Spacer(Modifier.width(10.dp))
+                    MetaText(Icons.Outlined.ThumbUpOffAlt, formatCount(detail.likeCount))
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        if (state.interaction.following) "已关注" else "关注",
+                        formatRelativeTime(detail.pubDate),
                         style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                },
-            )
-        }
+                }
 
-        Spacer(Modifier.height(14.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-        Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    AsyncImage(
+                        model = detail.authorFace.biliAvatar(),
+                        contentDescription = detail.authorName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable(enabled = detail.authorMid > 0) { onAuthorClick(detail.authorMid) },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        detail.authorName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                            .clickable(enabled = detail.authorMid > 0) { onAuthorClick(detail.authorMid) }
+                            .padding(vertical = 12.dp),
+                    )
+                    AssistChip(
+                        onClick = { onAuthorClick(detail.authorMid) },
+                        label = { Text("主页", style = MaterialTheme.typography.labelSmall) },
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    FilterChip(
+                        selected = state.interaction.following,
+                        onClick = viewModel::toggleFollow,
+                        enabled = !state.interactionBusy,
+                        label = {
+                            Text(
+                                if (state.interaction.following) "已关注" else "关注",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                    )
+                }
 
-        PlaybackControls(
-            state = state,
-            viewModel = viewModel,
-            onOpenDanmakuSettings = { showDanmakuSettings = true },
-        )
-        OutlinedButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching,
-            modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("发送弹幕")
-        }
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                Spacer(Modifier.height(10.dp))
 
-        Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-        Spacer(Modifier.height(6.dp))
-
-        InteractionRow(
-            state = state,
-            viewModel = viewModel,
-            onOpenCoin = { showCoinDialog = true },
-            onOpenFavorites = { if (viewModel.loadFavFolders()) showFavSheet = true },
-            onShare = {
-                viewModel.reportShare()
-                shareVideo(context, detail.title, detail.bvid)
-            },
-        )
-
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = { onCommentsClick(detail.aid) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("查看评论 ${formatCount(detail.replyCount)}")
-        }
-
-        if (detail.isMultiPage) {
-            Spacer(Modifier.height(14.dp))
-            Text("选集（${detail.pages.size}P）", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            detail.pages.forEachIndexed { index, page ->
-                FilterChip(
-                    selected = index == state.pageIndex,
-                    onClick = { viewModel.selectPage(index) },
-                    label = {
-                        Text(
-                            "P${page.index} ${page.title}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                PlaybackControls(
+                    state = state,
+                    viewModel = viewModel,
+                    onOpenDanmakuSettings = { showDanmakuSettings = true },
                 )
+                OutlinedButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("发送弹幕")
+                }
+
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                Spacer(Modifier.height(6.dp))
+
+                InteractionRow(
+                    state = state,
+                    viewModel = viewModel,
+                    onOpenCoin = { showCoinDialog = true },
+                    onOpenFavorites = { if (viewModel.loadFavFolders()) showFavSheet = true },
+                    onShare = {
+                        viewModel.reportShare()
+                        shareVideo(context, detail.title, detail.bvid)
+                    },
+                )
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { onCommentsClick(detail.aid) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("查看评论 ${formatCount(detail.replyCount)}")
+                }
+
+                if (detail.isMultiPage) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("选集（${detail.pages.size}P）", style = MaterialTheme.typography.titleMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { viewModel.adjacentPage(-1) }, enabled = !state.switching &&
+                            adjacentVideoPage(state.pageIndex, detail.pages.size, -1) != null) { Text("上一 P") }
+                        Text("P${state.currentPage?.index ?: state.pageIndex + 1} / ${detail.pages.size}",
+                            modifier = Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = { viewModel.adjacentPage(1) }, enabled = !state.switching &&
+                            adjacentVideoPage(state.pageIndex, detail.pages.size, 1) != null) { Text("下一 P") }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    detail.pages.forEachIndexed { index, page ->
+                        FilterChip(
+                            selected = index == state.pageIndex,
+                            onClick = { viewModel.selectPage(index) },
+                            enabled = !state.switching,
+                            label = {
+                                Text(
+                                    "P${page.index} ${page.title}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        )
+                    }
+                }
+
+                if (detail.description.isNotBlank()) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("简介", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        detail.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
             }
         }
-
-        if (detail.description.isNotBlank()) {
-            Spacer(Modifier.height(14.dp))
-            Text("简介", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                detail.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Spacer(Modifier.height(32.dp))
+        relatedVideoSection(relatedState, onRefreshRelated, onVideoClick, onAuthorClick)
+        item(key = "video_bottom_space") { Spacer(Modifier.height(32.dp)) }
     }
 
     if (showDanmakuSettings) {

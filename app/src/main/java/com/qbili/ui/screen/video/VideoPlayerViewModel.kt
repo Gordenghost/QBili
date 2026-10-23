@@ -38,6 +38,7 @@ import com.qbili.domain.model.VideoInteraction
 import com.qbili.domain.model.VideoQuality
 import com.qbili.domain.player.StreamSelector
 import com.qbili.domain.player.togglePlayback
+import com.qbili.domain.player.adjacentVideoPage
 import com.qbili.data.local.VideoProgressStore
 import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.remote.cookie.LoginCookies
@@ -262,6 +263,13 @@ class VideoPlayerViewModel(
         startPage(index, 0)
     }
 
+    fun adjacentPage(direction: Int) {
+        val state = _uiState.value
+        if (state.switching || state.loading || exited) return
+        val index = adjacentVideoPage(state.pageIndex, state.detail?.pages?.size ?: 0, direction) ?: return
+        selectPage(index)
+    }
+
     fun resumeFromHistory() {
         val resume = _uiState.value.resume ?: return
         val index = resume.pageIndex(_uiState.value.detail?.pages.orEmpty()) ?: 0
@@ -284,7 +292,8 @@ class VideoPlayerViewModel(
         pendingPosition = position
         lastReportAt = 0
         if (resetIntent) playbackIntent.setRequested(true)
-        _uiState.update { it.copy(stream = null, resume = resumeOffer, playbackRequested = playbackIntent.shouldPlay) }
+        _uiState.update { it.copy(stream = null, resume = resumeOffer, pageIndex = index, switching = true,
+            danmaku = emptyList(), playbackRequested = playbackIntent.shouldPlay) }
         playJob = viewModelScope.launch { playPage(index) }
     }
 

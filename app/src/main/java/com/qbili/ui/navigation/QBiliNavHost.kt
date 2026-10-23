@@ -87,6 +87,7 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onAuthorClick = { mid -> navController.navigate(Route.buildSpace(mid)) },
                 onCommentsClick = { aid -> navController.navigate(Route.buildComments(aid)) },
+                onVideoClick = { video -> navController.navigate(Route.buildVideo(video.key)) },
             )
         }
 

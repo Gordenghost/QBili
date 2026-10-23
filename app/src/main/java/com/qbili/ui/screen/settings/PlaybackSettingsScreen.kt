@@ -1,6 +1,8 @@
 package com.qbili.ui.screen.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.qbili.core.friendlyMessage
 import com.qbili.data.local.PlaybackSettings
 import com.qbili.ui.LocalAppContainer
+import com.qbili.domain.player.VideoCompletionMode
+import com.qbili.ui.component.VideoCompletionModeDialog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -42,14 +46,16 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
     var confirmUpload by remember { mutableStateOf(false) }
+    var chooseMode by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    fun save(resume: Boolean? = null, report: Boolean? = null) {
+    fun save(resume: Boolean? = null, report: Boolean? = null, mode: VideoCompletionMode? = null) {
         if (saving) return
         saving = true
         scope.launch {
             try {
                 resume?.let { store.setResume(it) }
                 report?.let { store.setReport(it) }
+                mode?.let { store.setCompletionMode(it) }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) { snackbars.showSnackbar(error.friendlyMessage())
             } finally { saving = false }
@@ -58,7 +64,11 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
     Scaffold(topBar = { TopAppBar(title = { Text("播放与历史") }, navigationIcon = {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") }
     }) }, snackbarHost = { SnackbarHost(snackbars) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            ListItem(headlineContent = { Text("普通视频播放模式：${settings.completionMode.title}") },
+                supportingContent = { Text("${settings.completionMode.description} 定时关闭优先，不播放相关推荐。") },
+                modifier = Modifier.clickable(enabled = !saving) { chooseMode = true })
+            HorizontalDivider()
             ListItem(headlineContent = { Text("普通视频断点续播") },
                 supportingContent = { Text("再次打开视频时提示继续播放或从头播放，支持分 P。关闭后仍保存本机观看记录。") },
                 trailingContent = { Switch(checked = settings.resumeEnabled, onCheckedChange = { save(resume = it) }, enabled = !saving) },
@@ -77,6 +87,8 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
                 modifier = Modifier.padding(16.dp))
         }
     }
+    if (chooseMode) VideoCompletionModeDialog(settings.completionMode,
+        onSelect = { chooseMode = false; save(mode = it) }, onDismiss = { chooseMode = false })
     if (confirmUpload) AlertDialog(onDismissRequest = { confirmUpload = false }, title = { Text("开启观看历史同步？") },
         text = { Text("将通过当前账号向 B站上传普通视频播放进度，并可能影响推荐。无需开启此功能也能查看账号历史、使用本机记录和断点续播。关闭后停止后续上传，已发送的记录需在历史页面删除。") },
         confirmButton = { TextButton(onClick = { confirmUpload = false; save(report = true) }) { Text("开启") } },

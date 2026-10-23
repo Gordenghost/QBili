@@ -39,6 +39,8 @@ import com.qbili.domain.model.VideoQuality
 import com.qbili.domain.player.StreamSelector
 import com.qbili.domain.player.togglePlayback
 import com.qbili.domain.player.adjacentVideoPage
+import com.qbili.domain.player.VideoCompletionController
+import com.qbili.domain.player.VideoCompletionMode
 import com.qbili.data.local.VideoProgressStore
 import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.remote.cookie.LoginCookies
@@ -105,6 +107,7 @@ class VideoPlayerViewModel(
         /** 切画质/切分P 时的短暂加载，与首次加载区分开，避免整页闪白 */
         val switching: Boolean = false,
         val resume: VideoResume? = null,
+        val completionMode: VideoCompletionMode = VideoCompletionMode.STOP,
     ) {
         val currentPage get() = detail?.pages?.getOrNull(pageIndex)
         val isLoggedIn: Boolean get() = loggedIn
@@ -127,6 +130,9 @@ class VideoPlayerViewModel(
     private var playJob: Job? = null
     private var danmakuJob: Job? = null
     private val playbackIntent = SeasonPlaybackIntent()
+    private val completionController = VideoCompletionController()
+    private var mediaGeneration = 0L
+    private var completionSettingsLoaded = false
     private var activeCid = 0L
     private var actuallyPlayed = false
     private var progressSession = sessionManager.loginCookies.value
@@ -139,12 +145,18 @@ class VideoPlayerViewModel(
 
     init {
         viewModelScope.launch {
-            settingsStore.settings.collect { reportEnabled = it.reportHistory }
+            settingsStore.settings.collect { settings ->
+                reportEnabled = settings.reportHistory
+                completionSettingsLoaded = true
+                _uiState.update { it.copy(completionMode = settings.completionMode) }
+            }
         }
         viewModelScope.launch {
             sessionManager.loginCookies.collect { current ->
                 if (current != progressSession) {
                     saveProgress()
+                    playbackIntent.setRequested(false)
+                    player.pause()
                     progressSession = current
                     actuallyPlayed = false
                     lastReportAt = 0
@@ -171,11 +183,30 @@ class VideoPlayerViewModel(
             .apply {
                 addListener(object : Player.Listener {
                     override fun onEvents(player: Player, events: Player.Events) {
+                        if (player.playbackState == Player.STATE_ENDED) {
+                            val state = _uiState.value
+                            completionController.onEnded(player, state.completionMode, state.pageIndex,
+                                state.detail?.pages?.size ?: 0,
+                                allowAutomaticPlayback = completionSettingsLoaded && !exited &&
+                                    !state.switching && !state.loading && state.error == null &&
+                                    state.stream != null && activeCid == state.currentPage?.cid &&
+                                    playbackIntent.shouldPlay && sessionManager.loginCookies.value == progressSession,
+                                sleepAtEnd = state.sleepAtVideoEnd,
+                                onNext = { startPage(it, 0L, resetIntent = false) },
+                                onStop = {
+                                    playbackIntent.setRequested(false)
+                                    if (state.sleepAtVideoEnd) {
+                                        _uiState.update { it.copy(sleepAtVideoEnd = false) }
+                                        QBiliLog.i(TAG, "播完当前视频，定时关闭生效")
+                                    }
+                                })
+                        }
                         _uiState.update { it.copy(playbackRequested =
                             player.playWhenReady && player.playbackState != Player.STATE_ENDED) }
                     }
 
                     override fun onIsPlayingChanged(playing: Boolean) {
+                        completionController.onPlaying(player.currentMediaItem?.mediaId, playing)
                         _uiState.update { it.copy(isPlaying = playing) }
                         if (playing && activeCid > 0) actuallyPlayed = true
                         if (!playing) saveProgress(forceReport = !player.playWhenReady)
@@ -183,12 +214,6 @@ class VideoPlayerViewModel(
 
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_ENDED) saveProgress()
-                        if (state == Player.STATE_ENDED && _uiState.value.sleepAtVideoEnd) {
-                            playbackIntent.setRequested(false)
-                            pause()
-                            _uiState.update { it.copy(sleepAtVideoEnd = false) }
-                            QBiliLog.i(TAG, "播完当前视频，定时关闭生效")
-                        }
                     }
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -211,6 +236,7 @@ class VideoPlayerViewModel(
         watchLaterLookup?.cancel()
         activeCid = 0
         actuallyPlayed = false
+        completionController.reset(null)
         player.stop()
         player.clearMediaItems()
         dash = null
@@ -286,6 +312,7 @@ class VideoPlayerViewModel(
         danmakuJob?.cancel()
         activeCid = 0
         actuallyPlayed = false
+        completionController.reset(null)
         player.stop()
         player.clearMediaItems()
         dash = null
@@ -363,6 +390,18 @@ class VideoPlayerViewModel(
         playbackIntent.setRequested(player.playWhenReady)
     }
 
+    fun setCompletionMode(mode: VideoCompletionMode) {
+        viewModelScope.launch {
+            try {
+                settingsStore.setCompletionMode(mode)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update { it.copy(toast = error.friendlyMessage()) }
+            }
+        }
+    }
+
     fun onEnter() { if (!exited) playbackIntent.enter() }
     fun onLeave() {
         saveProgress(forceReport = true)
@@ -380,6 +419,7 @@ class VideoPlayerViewModel(
         sleepJob?.cancel()
         activeCid = 0
         actuallyPlayed = false
+        completionController.reset(null)
         player.stop()
         player.clearMediaItems()
         _uiState.update { it.copy(fullscreen = false, isPlaying = false, playbackRequested = false,
@@ -672,7 +712,9 @@ class VideoPlayerViewModel(
         val resumeAt = if (keepPosition) player.currentPosition else pendingPosition
         val resumePlayback = playbackIntent.shouldPlay
         activeCid = 0
-        player.setMediaSource(buildMediaSource(stream))
+        val mediaId = "${_uiState.value.currentPage?.cid}:${++mediaGeneration}"
+        completionController.reset(mediaId)
+        player.setMediaSource(buildMediaSource(stream, mediaId))
         player.prepare()
         if (resumeAt > 0) player.seekTo(resumeAt)
         activeCid = _uiState.value.currentPage?.cid ?: 0
@@ -688,7 +730,7 @@ class VideoPlayerViewModel(
      *
      * 另外 CDN 强校验 Referer 与 UA，缺了直接 403。
      */
-    private fun buildMediaSource(stream: PlayableStream): MediaSource {
+    private fun buildMediaSource(stream: PlayableStream, mediaId: String): MediaSource {
         val factory = DefaultHttpDataSource.Factory()
             .setUserAgent(ApiConstants.USER_AGENT)
             .setDefaultRequestProperties(mapOf("Referer" to ApiConstants.WEB_REFERER))
@@ -697,7 +739,7 @@ class VideoPlayerViewModel(
             .setReadTimeoutMs(20_000)
 
         val video = ProgressiveMediaSource.Factory(factory)
-            .createMediaSource(MediaItem.fromUri(stream.videoUrl))
+            .createMediaSource(MediaItem.Builder().setUri(stream.videoUrl).setMediaId(mediaId).build())
 
         val audio = stream.audioUrl?.let { url ->
             ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))

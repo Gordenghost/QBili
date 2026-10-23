@@ -112,6 +112,7 @@ import com.qbili.domain.player.adjacentVideoPage
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.FullScreenError
 import com.qbili.ui.component.FullScreenLoading
+import com.qbili.ui.component.VideoCompletionModeDialog
 import com.qbili.ui.util.biliAvatar
 import kotlinx.coroutines.delay
 import com.qbili.domain.model.VideoResume
@@ -493,6 +494,7 @@ private fun VideoInfoPane(
     var showDanmakuSettings by remember { mutableStateOf(false) }
     var showCoinDialog by remember { mutableStateOf(false) }
     var showFavSheet by remember { mutableStateOf(false) }
+    var showCompletionMode by remember { mutableStateOf(false) }
 
     // 互动结果用系统 Toast 反馈：这个页面没有 Scaffold，
     // 为一句提示引入 SnackbarHost 会把布局搅复杂
@@ -577,6 +579,9 @@ private fun VideoInfoPane(
                     viewModel = viewModel,
                     onOpenDanmakuSettings = { showDanmakuSettings = true },
                 )
+                TextButton(onClick = { showCompletionMode = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("播放模式：${state.completionMode.title}")
+                }
                 OutlinedButton(onClick = onSendDanmaku, enabled = state.stream != null && !state.switching,
                     modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.AutoMirrored.Outlined.Comment, contentDescription = null)
@@ -663,6 +668,9 @@ private fun VideoInfoPane(
         )
     }
 
+    if (showCompletionMode) VideoCompletionModeDialog(state.completionMode,
+        onSelect = { showCompletionMode = false; viewModel.setCompletionMode(it) },
+        onDismiss = { showCompletionMode = false })
     if (showCoinDialog) {
         CoinDialog(
             onDismiss = { showCoinDialog = false },

@@ -61,11 +61,13 @@ class CourseResponseTest {
         val playback = response("""{"code":0,"data":{"quality":32,"is_preview":true,"timelength":76000,
             "durl":[{"order":1,"length":76000,"url":"https://cdn.example/video.mp4"}]}}""").playback(json, episode)
         assertTrue(playback.playback.preview)
+        assertFalse(playback.progressAllowed)
         assertTrue(playback.previewHint.contains("试看"))
         assertEquals("https://cdn.example/video.mp4", playback.playback.selectStream(80)?.segments?.single()?.url)
         val fullTrial = response("""{"code":0,"data":{"quality":32,"is_preview":0,
             "durl":[{"order":1,"url":"https://cdn.example/video.mp4"}]}}""").playback(json, episode)
         assertFalse(fullTrial.playback.preview)
+        assertTrue(fullTrial.progressAllowed)
         assertEquals("平台试看提示", fullTrial.previewHint)
     }
 
@@ -75,6 +77,14 @@ class CourseResponseTest {
             """{"code":0,"data":{"is_drm":true}}""",
             """{"code":0,"data":{"v_voucher":"risk"}}""").forEach {
             try { response(it).playback(json, episode); fail(it) } catch (_: BiliApiException) { }
+        }
+    }
+
+    @Test fun `unknown preview status allows playback but does not overwrite full lesson progress`() {
+        listOf("", "\"is_preview\":null,", "\"is_preview\":\"unknown\",").forEach { field ->
+            val playback = response("""{"code":0,"data":{$field"quality":32,
+                "durl":[{"order":1,"url":"https://cdn.example/video.mp4"}]}}""").playback(json, episode)
+            assertFalse(playback.progressAllowed)
         }
     }
 }

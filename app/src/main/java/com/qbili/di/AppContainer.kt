@@ -231,6 +231,15 @@ class AppContainer(context: Context) {
             .create(com.qbili.data.remote.api.CourseApi::class.java)
         com.qbili.data.repository.CourseRepository(api, network.cookieJar.loginState, network.json)
     }
+    val courseProgressStore by lazy { com.qbili.data.local.CourseProgressStore(appContext) }
+    fun saveCourseProgress(progress: com.qbili.domain.model.CourseProgress, onFailure: () -> Unit) {
+        appScope.launch {
+            runCatching { courseProgressStore.save(progress) }.onFailure {
+                QBiliLog.w("CourseProgress", "保存课程记录失败")
+                onFailure()
+            }
+        }
+    }
     val danmakuPostRepository by lazy {
         val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
             .retryOnConnectionFailure(false).build()

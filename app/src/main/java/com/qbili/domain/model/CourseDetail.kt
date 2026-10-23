@@ -65,4 +65,5 @@ data class CourseDetail(
     val catalogueIncomplete: Boolean,
 )
 
-data class CoursePlayback(val playback: SeasonPlayback, val previewHint: String)
+data class CoursePlayback(val playback: SeasonPlayback, val previewHint: String,
+    val progressAllowed: Boolean = !playback.preview)

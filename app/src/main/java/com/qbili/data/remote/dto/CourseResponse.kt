@@ -83,7 +83,8 @@ data class CourseResponse(val code: Int, val message: JsonElement? = null,
             throw BiliApiException(-1, "平台未提供可播放地址，请确认登录、购买或试看权限")
         }
         val hint = if (preview) "正在播放平台提供的试看，购买与完整权限请在B站查看" else episode.previewHint
-        return CoursePlayback(SeasonPlayback(result, preview, dto.quality), hint)
+        return CoursePlayback(SeasonPlayback(result, preview, dto.quality), hint,
+            progressAllowed = body.flag("is_preview") == false)
     }
 }
 

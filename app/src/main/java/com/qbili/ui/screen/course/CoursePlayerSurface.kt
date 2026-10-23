@@ -5,16 +5,21 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +45,7 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiState,
     onTogglePlay: () -> Unit, onSeekBy: (Long) -> Unit, onFullscreen: () -> Unit,
-    onBack: () -> Unit, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, onResume: () -> Unit, onDismissResume: () -> Unit, modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -73,6 +78,13 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = onFullscreen) { Icon(if (state.fullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
                 if (state.fullscreen) "退出全屏" else "全屏", tint = Color.White) }
+        }
+        if (state.canResume) Row(Modifier.align(Alignment.CenterStart).padding(start = 8.dp)
+            .background(Color.Black.copy(alpha = 0.65f)), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onResume) { Text("继续上次 ${com.qbili.core.formatDuration((state.resumePositionMs / 1_000).toInt())}", color = Color.White) }
+            IconButton(onClick = onDismissResume, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.Close, "关闭续播提示", tint = Color.White, modifier = Modifier.size(16.dp))
+            }
         }
         if (state.switching || state.buffering) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         else if (state.stream == null) Text(if (state.playError != null) "播放失败，请查看下方提示" else "在下方目录选择可播放课时",

@@ -54,6 +54,8 @@ import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.ReaderImageViewer
 import com.qbili.ui.screen.video.ApplyFullscreenWindow
 import com.qbili.ui.util.biliAvatar
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNotNull
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -79,12 +81,12 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     ApplyFullscreenWindow(state.fullscreen)
     BackHandler { if (state.fullscreen) model.setFullscreen(false) else leave() }
     LaunchedEffect(target) { model.setTarget(target) }
-    LaunchedEffect(state.stream, state.episode?.id) {
+    LaunchedEffect(state.stream, state.mediaId) {
         val stream = state.stream ?: return@LaunchedEffect
         val episode = state.episode ?: return@LaunchedEffect
         if (model.state.value.stream != stream || model.state.value.episode != episode) return@LaunchedEffect
         try {
-            player.setMediaSource(buildCourseMediaSource(stream, episode.id))
+            player.setMediaSource(buildCourseMediaSource(stream, episode.id, state.mediaId), state.startPositionMs)
             player.prepare()
             player.playWhenReady = model.state.value.requested
         } catch (error: Exception) {
@@ -93,8 +95,8 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
         }
     }
     LaunchedEffect(state.requested) { player.playWhenReady = model.state.value.requested }
-    LaunchedEffect(state.message) {
-        state.message?.let { model.consumeMessage(); snackbars.showSnackbar(it) }
+    LaunchedEffect(model) {
+        model.state.map { it.message }.filterNotNull().collect { model.consumeMessage(); snackbars.showSnackbar(it) }
     }
     LaunchedEffect(state.detail) { imageIndex = -1 }
     DisposableEffect(player, lifecycle, model) {
@@ -128,6 +130,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                 onSeekBy = { delta -> player.seekTo((player.currentPosition + delta).coerceIn(0, player.duration.coerceAtLeast(0))) },
                 onFullscreen = { model.setFullscreen(!state.fullscreen) },
                 onBack = { if (state.fullscreen) model.setFullscreen(false) else leave() },
+                onResume = model::resumeLast, onDismissResume = model::dismissResume,
                 modifier = if (state.fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             if (!state.fullscreen) LazyColumn(Modifier.fillMaxSize()) {
                 item {
@@ -135,7 +138,9 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                         state.detail?.let { detail ->
                             Text(detail.title, style = MaterialTheme.typography.titleLarge)
                             if (detail.subtitle.isNotBlank()) Text(detail.subtitle)
-                            Row(Modifier.fillMaxWidth().clickable(enabled = detail.authorMid > 0) { onAuthorClick(detail.authorMid) },
+                            Row(Modifier.fillMaxWidth().clickable(enabled = detail.authorMid > 0) {
+                                model.onLeave(); player.pause(); onAuthorClick(detail.authorMid)
+                            },
                                 verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(detail.authorAvatar.biliAvatar(), "讲师头像", Modifier.size(40.dp))
                                 Text(detail.authorName.ifBlank { "讲师" }, Modifier.padding(start = 12.dp))
@@ -157,7 +162,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                             }) { Text("在B站查看／购买") }
                             TextButton(onClick = { model.onLeave(); player.pause(); onLoginClick() }) { Text("登录") }
                         }
-                        Text("仅播放平台返回且授权的课程视频，不自动连播；课程直播、资料下载、评论及断点续播尚未接入。",
+                        Text("仅播放平台授权的课程视频，不自动连播。课程记录仅在本机按账号保存，试看不覆盖完整课时记录；课程直播、资料下载与评论暂不支持。",
                             style = MaterialTheme.typography.bodySmall)
                         Text("课程目录", style = MaterialTheme.typography.titleMedium)
                         if (state.detail?.catalogueIncomplete == true) Text("平台仅返回部分目录，请在B站查看完整课程。")

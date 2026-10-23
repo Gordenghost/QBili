@@ -85,7 +85,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HistoryScreen(onBack: () -> Unit, onLoginClick: () -> Unit,
     onVideoClick: (WatchHistoryItem) -> Unit, onSeasonClick: (Long, WatchHistoryItem) -> Unit,
-    onArticleClick: (Long) -> Unit, onOpusClick: (String) -> Unit, onLiveClick: (Long) -> Unit) {
+    onArticleClick: (Long) -> Unit, onOpusClick: (String) -> Unit, onLiveClick: (Long) -> Unit,
+    onCourseClick: (com.qbili.domain.model.CourseTarget) -> Unit) {
     val container = LocalAppContainer.current
     val viewModel: HistoryViewModel = viewModel(factory = remember(container) { HistoryViewModel.factory(container) })
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -185,6 +186,7 @@ fun HistoryScreen(onBack: () -> Unit, onLoginClick: () -> Unit,
                                 is HistoryOpenTarget.Article -> onArticleClick(target.id)
                                 is HistoryOpenTarget.Opus -> onOpusClick(target.id)
                                 is HistoryOpenTarget.Live -> onLiveClick(target.roomId)
+                                is HistoryOpenTarget.Course -> onCourseClick(target.target)
                                 HistoryOpenTarget.Unsupported -> viewModel.unsupported()
                             }
                         }, onDelete = { deleteTarget = item })

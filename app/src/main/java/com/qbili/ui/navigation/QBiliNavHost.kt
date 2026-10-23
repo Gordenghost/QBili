@@ -15,6 +15,9 @@ import com.qbili.ui.screen.favorite.FavoriteScreen
 import com.qbili.ui.screen.main.MainScreen
 import com.qbili.ui.screen.messages.MessagesScreen
 import com.qbili.ui.screen.season.SeasonScreen
+import com.qbili.ui.screen.course.CourseScreen
+import com.qbili.ui.screen.course.CourseEntryScreen
+import com.qbili.domain.model.CourseTarget
 import com.qbili.ui.screen.search.SearchScreen
 import com.qbili.ui.screen.settings.PushSettingsScreen
 import com.qbili.ui.screen.settings.PushFilterManagementScreen
@@ -52,6 +55,7 @@ fun QBiliNavHost(
                 onFavoritesClick = { navController.navigate(Route.FAVORITES) },
                 onWatchLaterClick = { navController.navigate(Route.WATCH_LATER) },
                 onHistoryClick = { navController.navigate(Route.HISTORY) },
+                onCoursesClick = { navController.navigate(Route.COURSES) },
                 onMessagesClick = { navController.navigate(Route.MESSAGES) },
                 onSettingsClick = { navController.navigate(Route.SETTINGS) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
@@ -69,6 +73,18 @@ fun QBiliNavHost(
                 onSeasonClick = { season -> navController.navigate(Route.buildSeason(season.seasonId)) },
                 onArticleClick = { article -> navController.navigate(Route.buildArticle(article.id)) },
             )
+        }
+        composable(Route.COURSES) {
+            CourseEntryScreen(onBack = { navController.popBackStack() },
+                onCourseClick = { navController.navigate(Route.buildCourse(it)) })
+        }
+        composable(Route.COURSE) { entry ->
+            val id = entry.arguments?.getString("courseId")?.toLongOrNull() ?: 0
+            val target = if (entry.arguments?.getString("courseKind") == "ep") CourseTarget(episodeId = id)
+                else CourseTarget(seasonId = id)
+            CourseScreen(target, onBack = { navController.popBackStack() },
+                onAuthorClick = { navController.navigate(Route.buildSpace(it)) },
+                onLoginClick = { navController.navigate(Route.LOGIN) })
         }
 
         composable(Route.VIDEO, arguments = listOf(
@@ -235,6 +251,7 @@ fun QBiliNavHost(
                 onArticleClick = { navController.navigate(Route.buildArticle(it)) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
                 onLiveClick = { navController.navigate(Route.buildLive(it)) },
+                onCourseClick = { navController.navigate(Route.buildCourse(it)) },
                 onSeasonClick = { id, item -> navController.navigate(Route.buildSeason(id, item.episodeId,
                     if (item.completed) 0 else item.positionMs)) })
         }

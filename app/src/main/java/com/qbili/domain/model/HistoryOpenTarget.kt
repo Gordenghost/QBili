@@ -8,6 +8,7 @@ sealed interface HistoryOpenTarget {
     data class Article(val id: Long) : HistoryOpenTarget
     data class Opus(val id: String) : HistoryOpenTarget
     data class Live(val roomId: Long) : HistoryOpenTarget
+    data class Course(val target: CourseTarget) : HistoryOpenTarget
     data object Unsupported : HistoryOpenTarget
 }
 
@@ -27,6 +28,9 @@ fun WatchHistoryItem.openTarget(): HistoryOpenTarget {
         "opus" -> linkTarget.takeIf { it is HistoryOpenTarget.Opus }
             ?: aid.takeIf { it > 0 }?.let { HistoryOpenTarget.Opus(it.toString()) } ?: HistoryOpenTarget.Unsupported
         "dynamic" -> linkTarget.takeIf { it is HistoryOpenTarget.Opus } ?: HistoryOpenTarget.Unsupported
+        "cheese", "pugv" -> linkTarget.takeIf { it is HistoryOpenTarget.Course }
+            ?: episodeId.takeIf { it > 0 }?.let { HistoryOpenTarget.Course(CourseTarget(episodeId = it)) }
+            ?: HistoryOpenTarget.Unsupported
         else -> linkTarget
     }
 }
@@ -42,6 +46,7 @@ internal fun historyLinkTarget(source: String): HistoryOpenTarget {
     val host = uri.host?.lowercase()
     val path = uri.rawPath.orEmpty()
     if (host in setOf("www.bilibili.com", "bilibili.com", "m.bilibili.com")) {
+        parseCourseTarget(raw)?.let { return HistoryOpenTarget.Course(it) }
         Regex("/read/cv([1-9][0-9]*)/?").matchEntire(path)?.groupValues?.get(1)
             ?.toLongOrNull()?.let { return HistoryOpenTarget.Article(it) }
         Regex("/opus/([1-9][0-9]{0,29})/?").matchEntire(path)?.groupValues?.get(1)
@@ -61,5 +66,6 @@ val WatchHistoryItem.contentLabel: String
         is HistoryOpenTarget.Article -> "专栏"
         is HistoryOpenTarget.Opus -> "图文"
         is HistoryOpenTarget.Live -> "直播"
+        is HistoryOpenTarget.Course -> "课程"
         HistoryOpenTarget.Unsupported -> "其他内容"
     }

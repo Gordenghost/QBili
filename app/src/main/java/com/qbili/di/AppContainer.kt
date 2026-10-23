@@ -225,6 +225,12 @@ class AppContainer(context: Context) {
             .create(com.qbili.data.remote.api.RelatedVideoApi::class.java)
         com.qbili.data.repository.RelatedVideoRepository(api, network.cookieJar.loginState, network.json)
     }
+    val courseRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.CourseApi::class.java)
+        com.qbili.data.repository.CourseRepository(api, network.cookieJar.loginState, network.json)
+    }
     val danmakuPostRepository by lazy {
         val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
             .retryOnConnectionFailure(false).build()

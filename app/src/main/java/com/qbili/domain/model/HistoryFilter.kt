@@ -1,7 +1,7 @@
 package com.qbili.domain.model
 
 enum class HistoryContentType(val label: String) {
-    ALL("全部"), VIDEO("视频"), PGC("番剧／影视"), ARTICLE("图文／专栏"), LIVE("直播"), OTHER("其他");
+    ALL("全部"), VIDEO("视频"), PGC("番剧／影视"), ARTICLE("图文／专栏"), LIVE("直播"), COURSE("课程"), OTHER("其他");
 
     fun matches(item: WatchHistoryItem): Boolean = when (this) {
         ALL -> true
@@ -10,7 +10,8 @@ enum class HistoryContentType(val label: String) {
         ARTICLE -> item.business in setOf("article", "article-list", "opus", "dynamic") ||
             item.openTarget().let { it is HistoryOpenTarget.Article || it is HistoryOpenTarget.Opus }
         LIVE -> item.business == "live" || item.openTarget() is HistoryOpenTarget.Live
-        OTHER -> !VIDEO.matches(item) && !PGC.matches(item) && !ARTICLE.matches(item) && !LIVE.matches(item)
+        COURSE -> item.business in setOf("cheese", "pugv") || item.openTarget() is HistoryOpenTarget.Course
+        OTHER -> !VIDEO.matches(item) && !PGC.matches(item) && !ARTICLE.matches(item) && !LIVE.matches(item) && !COURSE.matches(item)
     }
 }
 

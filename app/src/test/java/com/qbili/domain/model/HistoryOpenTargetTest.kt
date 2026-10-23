@@ -54,7 +54,7 @@ class HistoryOpenTargetTest {
             sourceUri = "https://www.bilibili.com/read/cv42").openTarget())
         assertEquals(HistoryOpenTarget.Opus("42"), item.copy(business = "future_type",
             sourceUri = "//www.bilibili.com/opus/42").openTarget())
-        assertEquals(HistoryOpenTarget.Unsupported, item.copy(business = "cheese",
+        assertEquals(HistoryOpenTarget.Course(CourseTarget(episodeId = 42)), item.copy(business = "cheese",
             sourceUri = "https://www.bilibili.com/cheese/play/ep42").openTarget())
         assertEquals(HistoryOpenTarget.Unsupported, item.copy(business = "future_type").openTarget())
     }

@@ -17,6 +17,24 @@ import retrofit2.Retrofit
 
 class RankingApiTest {
     @Test
+    fun `番剧榜截图中的字符串评分能够通过实际接口解析`() = runBlocking {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"code":0,"result":{"list":[{"season_id":33415,"rank":1,"title":"名侦探柯南",
+                    "new_ep":{"index_show":"更新至第1277话"},"rating":"8.8分"}]}}"""
+                    .toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val api = Retrofit.Builder().baseUrl("https://api.bilibili.com/").client(client)
+            .addConverterFactory(Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType()))
+            .build().create(RankingApi::class.java)
+        val result = api.animationRanking(3, 1).requireResult()
+        assertEquals(33415L, result.list!!.single().seasonId)
+        val item = result.list.single().toRankingItem(1)
+        assertEquals(8.8, item.score!!, 0.0)
+        assertEquals("更新至第1277话", item.progress)
+    }
+
+    @Test
     fun `热门接口使用正确路径查询参数和WBI标记且无默认参数`() = runBlocking {
         val requests = mutableListOf<Request>()
         val client = OkHttpClient.Builder().addInterceptor { chain ->

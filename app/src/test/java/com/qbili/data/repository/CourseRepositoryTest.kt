@@ -29,6 +29,18 @@ class CourseRepositoryTest {
     }
 
     @Test
+    fun `720P high frame rate is a valid explicit request with fixed account cookie`() = runBlocking {
+        val api = Api()
+        val repository = CourseRepository(api, MutableStateFlow(session), json)
+        val episode = repository.detail(session, CourseTarget(seasonId = 61)).episodes.single()
+        repository.playurl(session, episode, 74)
+        assertEquals(listOf("SESSDATA=session; bili_jct=csrf; DedeUserID=42", 790L, 123L, 74, 4048, 0, 1), api.requests.last())
+        val count = api.requests.size
+        try { repository.playurl(session, episode, 999); fail() } catch (_: IllegalArgumentException) { }
+        assertEquals(count, api.requests.size)
+    }
+
+    @Test
     fun `explicit cookie season episode queries and guest do not mix identities`() = runBlocking {
         val api = Api()
         val sessions = MutableStateFlow(session)

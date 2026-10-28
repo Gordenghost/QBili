@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -28,10 +30,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -72,6 +76,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     val lifecycle = LocalLifecycleOwner.current
     val snackbars = remember { SnackbarHostState() }
     var imageIndex by remember { mutableIntStateOf(-1) }
+    var showQualities by remember(state.mediaId, state.target) { mutableStateOf(false) }
     fun leave() { model.close(); onBack() }
     fun toggle() {
         if (state.switching || state.stream == null) return
@@ -84,7 +89,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     LaunchedEffect(state.stream, state.mediaId) {
         val stream = state.stream ?: return@LaunchedEffect
         val episode = state.episode ?: return@LaunchedEffect
-        if (model.state.value.stream != stream || model.state.value.episode != episode) return@LaunchedEffect
+        if (model.state.value.stream != stream || model.state.value.episode != episode || model.state.value.mediaId != state.mediaId) return@LaunchedEffect
         try {
             player.setMediaSource(buildCourseMediaSource(stream, episode.id, state.mediaId), state.startPositionMs)
             player.prepare()
@@ -131,10 +136,20 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                 onFullscreen = { model.setFullscreen(!state.fullscreen) },
                 onBack = { if (state.fullscreen) model.setFullscreen(false) else leave() },
                 onResume = model::resumeLast, onDismissResume = model::dismissResume,
+                onQuality = { showQualities = true }, onPreviousEpisode = { model.selectAdjacentEpisode(-1) },
+                onNextEpisode = { model.selectAdjacentEpisode(1) },
                 modifier = if (state.fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             if (!state.fullscreen) LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state.episode != null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { model.selectAdjacentEpisode(-1) },
+                                enabled = state.previousEpisode != null && !state.loading && !state.switching) { Text("上一课") }
+                            Text(state.episode?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = { model.selectAdjacentEpisode(1) },
+                                enabled = state.nextEpisode != null && !state.loading && !state.switching) { Text("下一课") }
+                        }
                         state.detail?.let { detail ->
                             Text(detail.title, style = MaterialTheme.typography.titleLarge)
                             if (detail.subtitle.isNotBlank()) Text(detail.subtitle)
@@ -162,7 +177,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                             }) { Text("在B站查看／购买") }
                             TextButton(onClick = { model.onLeave(); player.pause(); onLoginClick() }) { Text("登录") }
                         }
-                        Text("仅播放平台授权的课程视频，不自动连播。课程记录仅在本机按账号保存，试看不覆盖完整课时记录；课程直播、资料下载与评论暂不支持。",
+                        Text("点击播放器右上角切换平台提供的清晰度，完整课时保留当前位置与暂停状态。上一课／下一课按当前目录手动切换，首末不循环、不跳过受限课时，不自动连播。课程记录仅在本机按账号保存，试看不覆盖完整课时记录；课程直播、资料下载与评论暂不支持。",
                             style = MaterialTheme.typography.bodySmall)
                         Text("课程目录", style = MaterialTheme.typography.titleMedium)
                         if (state.detail?.catalogueIncomplete == true) Text("平台仅返回部分目录，请在B站查看完整课程。")
@@ -189,4 +204,22 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     }
     val images = state.detail?.images.orEmpty()
     if (imageIndex in images.indices) ReaderImageViewer(images, imageIndex, onDismiss = { imageIndex = -1 })
+    if (showQualities && state.stream != null) AlertDialog(onDismissRequest = { showQualities = false },
+        title = { Text("课程清晰度") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (state.qualities.size <= 1) "平台仅提供当前画质；登录或购买权限以B站为准。"
+                    else "仅显示当前账号实际可播放的轨道。切换不会自动恢复已暂停的播放；试看或权限未确认时从头播放。")
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                    items(state.qualities, key = { it.qn }) { quality ->
+                        ListItem(headlineContent = { Text(quality.label) },
+                            trailingContent = { if (state.stream?.quality == quality.qn) Text("当前", color = MaterialTheme.colorScheme.primary) },
+                            modifier = Modifier.clickable {
+                                showQualities = false
+                                model.selectQuality(quality.qn)
+                            })
+                    }
+                }
+            }
+        }, confirmButton = { TextButton(onClick = { showQualities = false }) { Text("关闭") } })
 }

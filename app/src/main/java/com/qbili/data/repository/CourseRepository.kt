@@ -4,6 +4,7 @@ import com.qbili.data.remote.api.CourseApi
 import com.qbili.data.remote.cookie.LoginCookies
 import com.qbili.domain.model.CourseEpisode
 import com.qbili.domain.model.CourseTarget
+import com.qbili.domain.player.courseQualityIds
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
 
@@ -20,7 +21,7 @@ class CourseRepository(private val api: CourseApi, private val sessions: StateFl
 
     suspend fun playurl(session: LoginCookies, episode: CourseEpisode, quality: Int) = run {
         require(episode.id > 0 && episode.cid > 0 && episode.video && episode.playable) { episode.accessHint }
-        require(quality in setOf(16, 32, 64, 80, 112, 116, 120, 125, 126, 127)) { "画质参数无效" }
+        require(quality in courseQualityIds) { "画质参数无效" }
         val response = api.playurl(cookies(session), episode.id, episode.cid, quality, 4048, 0, 1)
         validate(session)
         response.playback(json, episode)

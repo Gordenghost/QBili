@@ -66,4 +66,5 @@ data class CourseDetail(
 )
 
 data class CoursePlayback(val playback: SeasonPlayback, val previewHint: String,
-    val progressAllowed: Boolean = !playback.preview)
+    val progressAllowed: Boolean = !playback.preview,
+    val qualityLabels: Map<Int, String> = emptyMap())

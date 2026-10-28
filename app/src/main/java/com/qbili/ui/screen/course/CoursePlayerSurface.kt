@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +48,9 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiState,
     onTogglePlay: () -> Unit, onSeekBy: (Long) -> Unit, onFullscreen: () -> Unit,
-    onBack: () -> Unit, onResume: () -> Unit, onDismissResume: () -> Unit, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, onResume: () -> Unit, onDismissResume: () -> Unit,
+    onQuality: () -> Unit, onPreviousEpisode: () -> Unit, onNextEpisode: () -> Unit,
+    modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -76,6 +81,19 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = Color.White) }
             Text(state.episode?.title ?: state.detail?.title ?: "课程", color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (state.fullscreen) {
+                IconButton(onClick = onPreviousEpisode, enabled = state.previousEpisode != null && !state.switching) {
+                    Icon(Icons.Outlined.SkipPrevious, "上一课", tint = Color.White.copy(alpha = if (state.previousEpisode == null) 0.4f else 1f))
+                }
+                IconButton(onClick = onNextEpisode, enabled = state.nextEpisode != null && !state.switching) {
+                    Icon(Icons.Outlined.SkipNext, "下一课", tint = Color.White.copy(alpha = if (state.nextEpisode == null) 0.4f else 1f))
+                }
+            }
+            if (state.stream != null) TextButton(onClick = onQuality, enabled = !state.changingQuality && !state.switching,
+                modifier = Modifier.widthIn(max = 104.dp)) {
+                Text(if (state.changingQuality) "切换中…" else state.stream.label, color = Color.White,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             IconButton(onClick = onFullscreen) { Icon(if (state.fullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
                 if (state.fullscreen) "退出全屏" else "全屏", tint = Color.White) }
         }
@@ -86,6 +104,9 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
                 Icon(Icons.Outlined.Close, "关闭续播提示", tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
+        if (state.changingQuality) Text("正在切换清晰度…", color = Color.White,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp)
+                .background(Color.Black.copy(alpha = 0.65f)).padding(horizontal = 8.dp, vertical = 4.dp))
         if (state.switching || state.buffering) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         else if (state.stream == null) Text(if (state.playError != null) "播放失败，请查看下方提示" else "在下方目录选择可播放课时",
             color = Color.White, modifier = Modifier.align(Alignment.Center))

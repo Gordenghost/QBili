@@ -6,7 +6,8 @@ import com.qbili.data.remote.api.CourseApi
 import com.qbili.data.remote.cookie.LoginCookies
 import com.qbili.data.remote.interceptor.HeaderInterceptor
 import com.qbili.domain.model.CourseTarget
-import com.qbili.domain.player.selectStream
+import com.qbili.domain.player.availableCourseQualities
+import com.qbili.domain.player.selectCourseStream
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -35,7 +36,13 @@ class CoursePlaybackApiTest {
         assertTrue(detail.episodes.any { !it.playable })
         val episode = detail.episodes.first { it.playable && it.video && it.cid > 0 }
         val result = repository.playurl(LoginCookies.EMPTY, episode, 80)
-        val stream = requireNotNull(result.playback.selectStream(80))
+        val stream = requireNotNull(result.selectCourseStream(80))
+        val options = result.availableCourseQualities()
+        assertTrue(options.any { it.qn == stream.quality })
+        options.forEach { option ->
+            val refreshed = repository.playurl(LoginCookies.EMPTY, episode, option.qn)
+            assertEquals(option.qn, requireNotNull(refreshed.selectCourseStream(option.qn)).quality)
+        }
         val urls = stream.dash?.let { listOfNotNull(it.videoUrl, it.audioUrl) } ?: stream.segments.map { it.url }
         urls.forEach { url ->
             val request = Request.Builder().url(url).header("Referer", "https://www.bilibili.com/cheese/play/ep${episode.id}")
@@ -46,6 +53,6 @@ class CoursePlaybackApiTest {
                 assertTrue(requireNotNull(response.body).source().read(buffer, 2048) > 0)
             }
         }
-        println("[Course] ${detail.title} / ${episode.title}，${stream.label}，CDN可读取")
+        println("[Course] ${detail.title} / ${episode.title}，${stream.label}，可选画质${options.map { it.qn }}已验证，CDN可读取")
     }
 }

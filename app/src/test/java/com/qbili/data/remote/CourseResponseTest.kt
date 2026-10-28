@@ -4,6 +4,8 @@ import com.qbili.core.BiliApiException
 import com.qbili.data.remote.dto.CourseResponse
 import com.qbili.domain.model.CourseEpisode
 import com.qbili.domain.player.selectStream
+import com.qbili.domain.player.availableCourseQualities
+import com.qbili.domain.player.selectCourseStream
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,6 +14,21 @@ class CourseResponseTest {
     private val json = Json { ignoreUnknownKeys = true }
     private fun response(raw: String): CourseResponse = json.decodeFromString(raw)
     private val episode = CourseEpisode(790, 123, 1, "试看", "", 76, "全集试看", "平台试看提示", true, true)
+
+    @Test fun `quality descriptions tolerate mixed shapes but do not grant advertised tracks`() {
+        val playback = response("""{"code":0,"data":{"quality":32,"is_preview":false,
+            "accept_quality":[120,112,80,32],"support_formats":[null,{},false,
+                {"quality":120,"new_description":"4K"},{"quality":112,"new_description":"1080P 高码率"},
+                {"quality":32,"new_description":false,"description":"<b>480P 标清</b>"},
+                {"quality":80,"description":{}},{"quality":-1,"description":"无效"}],
+            "dash":{"video":[{"id":32,"base_url":"https://cdn.example/32.mp4"}]}}}""").playback(json, episode)
+        assertEquals(listOf(32), playback.availableCourseQualities().map { it.qn })
+        assertEquals("480P 标清", playback.selectCourseStream(80)?.label)
+        assertEquals("1080P 高码率", playback.qualityLabels[112])
+        val malformed = response("""{"code":0,"data":{"quality":32,"support_formats":{},
+            "durl":[{"order":1,"url":"https://cdn.example/video.mp4"}]}}""").playback(json, episode)
+        assertEquals("480P", malformed.selectCourseStream(32)?.label)
+    }
 
     @Test
     fun `catalogue keeps platform order and seconds deduplicates ids and does not guess free access`() {

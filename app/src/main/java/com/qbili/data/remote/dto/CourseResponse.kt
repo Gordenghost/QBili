@@ -83,8 +83,17 @@ data class CourseResponse(val code: Int, val message: JsonElement? = null,
             throw BiliApiException(-1, "平台未提供可播放地址，请确认登录、购买或试看权限")
         }
         val hint = if (preview) "正在播放平台提供的试看，购买与完整权限请在B站查看" else episode.previewHint
+        val labels = (body["support_formats"] as? JsonArray).orEmpty().mapNotNull { value ->
+            val row = value as? JsonObject ?: return@mapNotNull null
+            val quality = row.number("quality")?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt() ?: return@mapNotNull null
+            val label = listOf("new_description", "description", "display_desc").mapNotNull { key ->
+                (row[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+            }.map { stripHtml(it).replace(Regex("\\s+"), " ").trim().take(48) }
+                .firstOrNull { it.isNotBlank() } ?: return@mapNotNull null
+            quality to label
+        }.toMap()
         return CoursePlayback(SeasonPlayback(result, preview, dto.quality), hint,
-            progressAllowed = body.flag("is_preview") == false)
+            progressAllowed = body.flag("is_preview") == false, qualityLabels = labels)
     }
 }
 

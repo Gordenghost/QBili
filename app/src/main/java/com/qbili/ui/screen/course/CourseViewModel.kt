@@ -10,9 +10,13 @@ import com.qbili.domain.model.CoursePlayback
 import com.qbili.domain.model.CourseTarget
 import com.qbili.domain.model.CourseProgress
 import com.qbili.domain.model.CoursePlaybackSnapshot
+import com.qbili.domain.model.QualityOption
 import com.qbili.domain.model.courseMediaId
 import com.qbili.domain.player.SeasonStream
-import com.qbili.domain.player.selectStream
+import com.qbili.domain.player.adjacentCourseEpisode
+import com.qbili.domain.player.availableCourseQualities
+import com.qbili.domain.player.courseQualityPosition
+import com.qbili.domain.player.selectCourseStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -55,11 +59,16 @@ class CourseViewModel(
         val progressAllowed: Boolean = false,
         val mediaGeneration: Long = 0,
         val startPositionMs: Long = 0,
+        val qualities: List<QualityOption> = emptyList(),
+        val changingQuality: Boolean = false,
     ) {
         val resumePositionMs: Long get() = detail?.let { progress?.resumePosition(it) } ?: 0
         val mediaId: String get() = courseMediaId(episode?.id ?: 0, mediaGeneration)
         val canResume: Boolean get() = resumePositionMs > 0 && !loading && !switching &&
+            !changingQuality &&
             !(stream != null && !progressAllowed && episode?.id == progress?.episodeId)
+        val previousEpisode: CourseEpisode? get() = detail?.adjacentCourseEpisode(episode?.id ?: 0, -1)
+        val nextEpisode: CourseEpisode? get() = detail?.adjacentCourseEpisode(episode?.id ?: 0, 1)
     }
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
@@ -69,6 +78,9 @@ class CourseViewModel(
     private var playbackGeneration = 0L
     private var detailJob: Job? = null
     private var playbackJob: Job? = null
+    private var qualityJob: Job? = null
+    private var qualityGeneration = 0L
+    private var preferredQuality = 80
     private var foreground = true
     private var closed = false
     private var records = emptyList<CourseProgress>()
@@ -116,6 +128,7 @@ class CourseViewModel(
         generation++
         detailJob?.cancel()
         clearPlayback()
+        preferredQuality = 80
         resumeConsumed = false
         progressResolved = false
         _state.value = UiState(target = target)
@@ -153,9 +166,9 @@ class CourseViewModel(
         }
     }
 
-    fun selectEpisode(id: Long, quality: Int = 80, resumePositionMs: Long = 0) {
+    fun selectEpisode(id: Long, quality: Int = preferredQuality, resumePositionMs: Long = 0) {
         val current = _state.value
-        if (closed || current.loading || current.switching) return
+        if (closed || !foreground || sessions.value != session || current.loading || current.switching) return
         val episode = current.detail?.episodes?.firstOrNull { it.id == id } ?: return
         if (!episode.video || !episode.playable || episode.cid <= 0) {
             _state.update { it.copy(message = episode.accessHint) }
@@ -172,13 +185,14 @@ class CourseViewModel(
             try {
                 val playback = loadPlayback(captured, episode, quality)
                 if (!valid(token, captured) || playToken != playbackGeneration) return@launch
-                val stream = playback.playback.selectStream(quality)
+                val stream = playback.selectCourseStream(quality)
                     ?: throw IllegalStateException("没有可播放轨道，请在B站查看该课程")
                 val resume = current.progress?.takeIf { it.episodeId == episode.id }?.resumePosition(current.detail!!) ?: 0
                 val position = resumePositionMs.takeIf { it > 0 && it == resume && playback.progressAllowed } ?: 0
                 if (position > 0) resumeConsumed = true
                 _state.update { it.copy(stream = stream, switching = false, previewHint = playback.previewHint,
                     preview = playback.playback.preview, startPositionMs = position,
+                    qualities = playback.availableCourseQualities(),
                     progressAllowed = playback.progressAllowed,
                     progress = if (position > 0) null else it.progress,
                     message = if (resumePositionMs > 0 && !playback.progressAllowed)
@@ -194,12 +208,74 @@ class CourseViewModel(
 
     private fun clearPlayback() {
         persistPlayback()
+        cancelQualityChange()
         playbackGeneration++
         playbackJob?.cancel()
         stopPlayback()
         playbackSession = null
         _state.update { it.copy(episode = null, stream = null, switching = false, requested = false,
-            previewHint = "", playError = null, buffering = false, preview = false, progressAllowed = false, startPositionMs = 0) }
+            previewHint = "", playError = null, buffering = false, preview = false, progressAllowed = false,
+            startPositionMs = 0, qualities = emptyList()) }
+    }
+
+    fun selectAdjacentEpisode(direction: Int) {
+        val current = _state.value
+        val episode = current.detail?.adjacentCourseEpisode(current.episode?.id ?: 0, direction) ?: return
+        selectEpisode(episode.id)
+    }
+
+    fun selectQuality(quality: Int) {
+        val current = _state.value
+        val episode = current.episode ?: return
+        val stream = current.stream ?: return
+        if (closed || !foreground || sessions.value != session || current.loading || current.switching || current.changingQuality) return
+        if (quality == stream.quality) return
+        if (current.qualities.none { it.qn == quality }) {
+            showMessage("当前账号没有此清晰度的可播放轨道")
+            return
+        }
+        val token = generation
+        val mediaToken = playbackGeneration
+        val qualityToken = ++qualityGeneration
+        val captured = session
+        _state.update { it.copy(changingQuality = true) }
+        qualityJob = workScope.launch {
+            try {
+                val playback = loadPlayback(captured, episode, quality)
+                if (!valid(token, captured) || mediaToken != playbackGeneration || qualityToken != qualityGeneration) return@launch
+                val selected = playback.selectCourseStream(quality)
+                    ?.takeIf { it.quality == quality }
+                    ?: throw IllegalStateException("平台未返回所选画质，登录或购买权限可能已变化")
+                val latest = _state.value
+                val position = playbackSnapshot()?.courseQualityPosition(latest.mediaId, latest.progressAllowed,
+                    playback.progressAllowed, playback.playback.playurl.durationMillis) ?: 0
+                persistPlayback()
+                playbackGeneration++
+                stopPlayback()
+                preferredQuality = quality
+                if (position > 0) resumeConsumed = true
+                _state.update { it.copy(stream = selected, mediaGeneration = playbackGeneration, startPositionMs = position,
+                    qualities = playback.availableCourseQualities(), changingQuality = false, buffering = false,
+                    previewHint = playback.previewHint, preview = playback.playback.preview,
+                    progressAllowed = playback.progressAllowed, requested = latest.requested && foreground,
+                    playError = null, progress = if (position > 0) null else it.progress,
+                    message = if (!latest.progressAllowed || !playback.progressAllowed)
+                        "试看或未确认完整播放状态，切换画质从头播放；完整课时记录保留" else it.message) }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (valid(token, captured) && mediaToken == playbackGeneration && qualityToken == qualityGeneration) {
+                    _state.update { it.copy(changingQuality = false,
+                        message = "切换清晰度失败，保留原画质：${error.friendlyMessage()}") }
+                }
+            }
+        }
+    }
+
+    private fun cancelQualityChange() {
+        qualityGeneration++
+        qualityJob?.cancel()
+        qualityJob = null
+        _state.update { it.copy(changingQuality = false) }
     }
 
     fun resumeLast() {
@@ -246,7 +322,7 @@ class CourseViewModel(
     fun setFullscreen(value: Boolean) { _state.update { it.copy(fullscreen = value && !closed) } }
     fun consumeMessage() { _state.update { it.copy(message = null) } }
     fun onEnter() { foreground = true }
-    fun onLeave() { persistPlayback(); foreground = false; requestPlayback(false) }
+    fun onLeave() { persistPlayback(); foreground = false; cancelQualityChange(); requestPlayback(false) }
 
     fun close() {
         if (closed) return

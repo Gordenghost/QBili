@@ -1,6 +1,7 @@
 package com.qbili.ui.screen.course
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.ExoPlayer
@@ -30,7 +31,10 @@ class CoursePlaybackViewModel(context: Context, container: AppContainer) : ViewM
                 player.play()
                 true
             } else false
-        })
+        }, speeds = container.coursePlaybackSettingsStore.speeds,
+        saveSpeed = container.coursePlaybackSettingsStore::setSpeed,
+        applyPlaybackSpeed = { player.setPlaybackSpeed(it) }, pausePlayback = { player.pause() },
+        timerClock = SystemClock::elapsedRealtime)
 
     private fun courseSaveFailed(accountMid: Long) { viewModelScope.launch { course.progressSaveFailed(accountMid) } }
 

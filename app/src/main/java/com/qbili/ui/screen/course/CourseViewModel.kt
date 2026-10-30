@@ -17,6 +17,9 @@ import com.qbili.domain.player.adjacentCourseEpisode
 import com.qbili.domain.player.availableCourseQualities
 import com.qbili.domain.player.courseQualityPosition
 import com.qbili.domain.player.selectCourseStream
+import com.qbili.domain.player.CourseSleepTimer
+import com.qbili.domain.player.coursePlaybackSpeeds
+import com.qbili.domain.player.validCourseSpeed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -27,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class CourseViewModel(
     private val sessions: StateFlow<LoginCookies>,
@@ -39,6 +43,12 @@ class CourseViewModel(
     private val playbackSnapshot: () -> CoursePlaybackSnapshot? = { null },
     private val seekPlayback: (String, Long) -> Boolean = { _, _ -> false },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val speeds: Flow<Float> = flowOf(1f),
+    private val saveSpeed: suspend (Float) -> Unit = {},
+    private val applyPlaybackSpeed: (Float) -> Unit = {},
+    private val pausePlayback: () -> Unit = {},
+    private val timerClock: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val waitForTimerTick: suspend () -> Unit = { delay(1_000) },
 ) : ViewModel() {
     data class UiState(
         val target: CourseTarget? = null,
@@ -61,6 +71,14 @@ class CourseViewModel(
         val startPositionMs: Long = 0,
         val qualities: List<QualityOption> = emptyList(),
         val changingQuality: Boolean = false,
+        val playbackSpeed: Float = 1f,
+        val speedLoaded: Boolean = false,
+        val savingSpeed: Boolean = false,
+        val speedBoosting: Boolean = false,
+        val speedError: String? = null,
+        val sleepRemainingSeconds: Int = 0,
+        val sleepTimerMinutes: Int = 0,
+        val sleepTimerExpired: Boolean = false,
     ) {
         val resumePositionMs: Long get() = detail?.let { progress?.resumePosition(it) } ?: 0
         val mediaId: String get() = courseMediaId(episode?.id ?: 0, mediaGeneration)
@@ -69,6 +87,7 @@ class CourseViewModel(
             !(stream != null && !progressAllowed && episode?.id == progress?.episodeId)
         val previousEpisode: CourseEpisode? get() = detail?.adjacentCourseEpisode(episode?.id ?: 0, -1)
         val nextEpisode: CourseEpisode? get() = detail?.adjacentCourseEpisode(episode?.id ?: 0, 1)
+        val effectiveSpeed: Float get() = if (speedBoosting) 2f else playbackSpeed
     }
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
@@ -88,6 +107,14 @@ class CourseViewModel(
     private var progressLoaded = false
     private var resumeConsumed = false
     private var progressResolved = false
+    private var preferredSpeed = 1f
+    private var storedSpeed = 1f
+    private var speedLoaded = false
+    private var speedGeneration = 0L
+    private var speedJob: Job? = null
+    private var sleepTimer: CourseSleepTimer? = null
+    private var sleepGeneration = 0L
+    private var sleepJob: Job? = null
 
     init {
         workScope.launch {
@@ -108,6 +135,28 @@ class CourseViewModel(
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) { showMessage("课程记录读取失败，不影响播放；可返回课程入口重试") }
         }
+        workScope.launch {
+            try {
+                speeds.collect { speed ->
+                    if (!closed) {
+                        storedSpeed = speed.validCourseSpeed()
+                        speedLoaded = true
+                        if (!_state.value.savingSpeed) {
+                            preferredSpeed = storedSpeed
+                            _state.update { it.copy(playbackSpeed = preferredSpeed, speedLoaded = true, speedError = null) }
+                            applyCurrentSpeed()
+                        }
+                    }
+                }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (!closed) {
+                    speedLoaded = true
+                    val message = "课程倍速设置读取失败，将使用当前倍速；可返回课程重试"
+                    _state.update { it.copy(speedLoaded = true, speedError = message, message = message) }
+                }
+            }
+        }
     }
 
     private fun updateProgress() {
@@ -127,11 +176,13 @@ class CourseViewModel(
     private fun reset(target: CourseTarget?, openEpisode: Boolean) {
         generation++
         detailJob?.cancel()
+        cancelSleepTimer()
+        cancelSpeedSave()
         clearPlayback()
         preferredQuality = 80
         resumeConsumed = false
         progressResolved = false
-        _state.value = UiState(target = target)
+        _state.value = UiState(target = target, playbackSpeed = preferredSpeed, speedLoaded = speedLoaded)
         if (target != null && !closed) load(openEpisode)
     }
 
@@ -139,6 +190,7 @@ class CourseViewModel(
         if (closed || _state.value.loading || _state.value.target == null) return
         generation++
         detailJob?.cancel()
+        cancelSleepTimer()
         clearPlayback()
         resumeConsumed = false
         progressResolved = false
@@ -174,17 +226,19 @@ class CourseViewModel(
             _state.update { it.copy(message = episode.accessHint) }
             return
         }
+        val timedOut = expireSleepTimerIfDue()
         clearPlayback()
         val token = generation
         val playToken = playbackGeneration
         val captured = session
         playbackSession = captured
-        _state.update { it.copy(episode = episode, switching = true, playError = null, requested = foreground,
-            mediaGeneration = playToken) }
+        _state.update { it.copy(episode = episode, switching = true, playError = null, requested = foreground && !timedOut,
+            mediaGeneration = playToken, sleepTimerExpired = if (foreground && !timedOut) false else it.sleepTimerExpired) }
         playbackJob = workScope.launch {
             try {
                 val playback = loadPlayback(captured, episode, quality)
                 if (!valid(token, captured) || playToken != playbackGeneration) return@launch
+                expireSleepTimerIfDue()
                 val stream = playback.selectCourseStream(quality)
                     ?: throw IllegalStateException("没有可播放轨道，请在B站查看该课程")
                 val resume = current.progress?.takeIf { it.episodeId == episode.id }?.resumePosition(current.detail!!) ?: 0
@@ -209,6 +263,7 @@ class CourseViewModel(
     private fun clearPlayback() {
         persistPlayback()
         cancelQualityChange()
+        clearSpeedBoost()
         playbackGeneration++
         playbackJob?.cancel()
         stopPlayback()
@@ -243,6 +298,7 @@ class CourseViewModel(
             try {
                 val playback = loadPlayback(captured, episode, quality)
                 if (!valid(token, captured) || mediaToken != playbackGeneration || qualityToken != qualityGeneration) return@launch
+                expireSleepTimerIfDue()
                 val selected = playback.selectCourseStream(quality)
                     ?.takeIf { it.quality == quality }
                     ?: throw IllegalStateException("平台未返回所选画质，登录或购买权限可能已变化")
@@ -251,6 +307,7 @@ class CourseViewModel(
                     playback.progressAllowed, playback.playback.playurl.durationMillis) ?: 0
                 persistPlayback()
                 playbackGeneration++
+                clearSpeedBoost()
                 stopPlayback()
                 preferredQuality = quality
                 if (position > 0) resumeConsumed = true
@@ -281,6 +338,7 @@ class CourseViewModel(
     fun resumeLast() {
         val current = _state.value
         if (closed || !foreground || !current.canResume || sessions.value != session) return
+        if (expireSleepTimerIfDue()) return
         val progress = current.progress ?: return
         if (current.episode?.id == progress.episodeId && current.stream != null && current.playError == null) {
             if (seekPlayback(current.mediaId, current.resumePositionMs)) {
@@ -315,18 +373,127 @@ class CourseViewModel(
     private fun valid(token: Long, captured: LoginCookies) =
         !closed && token == generation && sessions.value == captured
 
-    fun requestPlayback(requested: Boolean) { _state.update { it.copy(requested = requested && foreground && !closed) } }
+    fun setPlaybackSpeed(speed: Float) {
+        if (closed || !foreground || sessions.value != session || !_state.value.speedLoaded || _state.value.savingSpeed) return
+        if (speed !in coursePlaybackSpeeds) { showMessage("课程倍速无效"); return }
+        if (speed == preferredSpeed) return
+        val token = ++speedGeneration
+        val previous = preferredSpeed
+        preferredSpeed = speed
+        _state.update { it.copy(playbackSpeed = speed, savingSpeed = true, speedError = null) }
+        if (!applyCurrentSpeed()) {
+            preferredSpeed = previous
+            _state.update { it.copy(playbackSpeed = previous, savingSpeed = false) }
+            return
+        }
+        speedJob = workScope.launch {
+            try {
+                saveSpeed(speed)
+                if (!closed && token == speedGeneration) {
+                    storedSpeed = speed
+                    _state.update { it.copy(savingSpeed = false) }
+                }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (!closed && token == speedGeneration) {
+                    val message = "课程倍速保存失败，本次播放仍使用所选倍速；返回课程后需重新设置"
+                    _state.update { it.copy(savingSpeed = false, speedError = message, message = message) }
+                }
+            }
+        }
+    }
+
+    private fun cancelSpeedSave() {
+        speedGeneration++
+        speedJob?.cancel()
+        speedJob = null
+        if (_state.value.savingSpeed) preferredSpeed = storedSpeed
+        _state.update { it.copy(savingSpeed = false, playbackSpeed = preferredSpeed) }
+    }
+
+    fun setSpeedBoosting(enabled: Boolean) {
+        if (closed || enabled && (!foreground || sessions.value != session || _state.value.stream == null || _state.value.switching)) return
+        _state.update { it.copy(speedBoosting = enabled) }
+        if (!applyCurrentSpeed()) _state.update { it.copy(speedBoosting = false) }
+    }
+
+    private fun clearSpeedBoost() {
+        if (_state.value.speedBoosting) {
+            _state.update { it.copy(speedBoosting = false) }
+            applyCurrentSpeed()
+        }
+    }
+
+    private fun applyCurrentSpeed(): Boolean {
+        if (closed) return false
+        return try {
+            applyPlaybackSpeed(_state.value.effectiveSpeed)
+            true
+        } catch (error: Exception) {
+            val message = "播放器暂时无法调整倍速，请重试或重新打开课程"
+            _state.update { it.copy(speedError = message, message = message) }
+            false
+        }
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        if (closed || !foreground || sessions.value != session || _state.value.episode == null) return
+        val timer = CourseSleepTimer.start(timerClock(), minutes)
+        if (timer == null) { showMessage("请选择有效的定时暂停时长"); return }
+        cancelSleepTimer()
+        sleepTimer = timer
+        val token = sleepGeneration
+        val captured = session
+        _state.update { it.copy(sleepTimerMinutes = minutes, sleepRemainingSeconds = timer.remainingSeconds(timerClock())) }
+        sleepJob = workScope.launch {
+            while (!closed && token == sleepGeneration && sessions.value == captured) {
+                waitForTimerTick()
+                if (closed || token != sleepGeneration || sessions.value != captured) return@launch
+                if (expireSleepTimerIfDue()) return@launch
+                _state.update { it.copy(sleepRemainingSeconds = timer.remainingSeconds(timerClock())) }
+            }
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepGeneration++
+        sleepJob?.cancel()
+        sleepJob = null
+        sleepTimer = null
+        _state.update { it.copy(sleepRemainingSeconds = 0, sleepTimerMinutes = 0, sleepTimerExpired = false) }
+    }
+
+    private fun expireSleepTimerIfDue(): Boolean {
+        val timer = sleepTimer ?: return false
+        if (timer.remainingSeconds(timerClock()) > 0) return false
+        cancelSleepTimer()
+        _state.update { it.copy(requested = false, sleepTimerExpired = true, message = "定时暂停已生效，课程已暂停") }
+        persistPlayback()
+        pausePlayback()
+        return true
+    }
+
+    fun requestPlayback(requested: Boolean) {
+        if (requested && expireSleepTimerIfDue()) return
+        val shouldPlay = requested && foreground && !closed
+        _state.update { it.copy(requested = shouldPlay, sleepTimerExpired = if (shouldPlay) false else it.sleepTimerExpired) }
+    }
     fun playbackError(message: String) { _state.update { it.copy(playError = message, requested = false) } }
     fun setBuffering(value: Boolean) { _state.update { it.copy(buffering = value) } }
     fun showMessage(value: String) { _state.update { it.copy(message = value) } }
     fun setFullscreen(value: Boolean) { _state.update { it.copy(fullscreen = value && !closed) } }
     fun consumeMessage() { _state.update { it.copy(message = null) } }
     fun onEnter() { foreground = true }
-    fun onLeave() { persistPlayback(); foreground = false; cancelQualityChange(); requestPlayback(false) }
+    fun onLeave() {
+        persistPlayback(); foreground = false; cancelQualityChange(); cancelSleepTimer(); clearSpeedBoost(); requestPlayback(false)
+    }
 
     fun close() {
         if (closed) return
         persistPlayback()
+        cancelSleepTimer()
+        cancelSpeedSave()
+        clearSpeedBoost()
         closed = true
         generation++
         detailJob?.cancel()

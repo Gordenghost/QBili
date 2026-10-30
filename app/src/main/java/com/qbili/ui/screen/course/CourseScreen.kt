@@ -54,6 +54,7 @@ import coil.compose.AsyncImage
 import com.qbili.core.formatDuration
 import com.qbili.domain.model.CourseTarget
 import com.qbili.domain.player.togglePlayback
+import com.qbili.domain.player.formatCourseSpeed
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.ReaderImageViewer
 import com.qbili.ui.screen.video.ApplyFullscreenWindow
@@ -77,6 +78,7 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     val snackbars = remember { SnackbarHostState() }
     var imageIndex by remember { mutableIntStateOf(-1) }
     var showQualities by remember(state.mediaId, state.target) { mutableStateOf(false) }
+    var showPlaybackSettings by remember(state.mediaId, state.target) { mutableStateOf(false) }
     fun leave() { model.close(); onBack() }
     fun toggle() {
         if (state.switching || state.stream == null) return
@@ -136,12 +138,21 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
                 onFullscreen = { model.setFullscreen(!state.fullscreen) },
                 onBack = { if (state.fullscreen) model.setFullscreen(false) else leave() },
                 onResume = model::resumeLast, onDismissResume = model::dismissResume,
-                onQuality = { showQualities = true }, onPreviousEpisode = { model.selectAdjacentEpisode(-1) },
+                onQuality = { showPlaybackSettings = false; showQualities = true }, onPreviousEpisode = { model.selectAdjacentEpisode(-1) },
                 onNextEpisode = { model.selectAdjacentEpisode(1) },
+                onPlaybackSettings = { showQualities = false; showPlaybackSettings = true }, onSpeedBoost = model::setSpeedBoosting,
                 modifier = if (state.fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             if (!state.fullscreen) LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { showQualities = false; showPlaybackSettings = true }, modifier = Modifier.weight(1f)) {
+                                Text("播放设置 · ${formatCourseSpeed(state.playbackSpeed)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (state.sleepRemainingSeconds > 0) Text("${formatDuration(state.sleepRemainingSeconds)} 后暂停",
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            else if (state.sleepTimerExpired) Text("已定时暂停", modifier = Modifier.weight(1f))
+                        }
                         if (state.episode != null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { model.selectAdjacentEpisode(-1) },
                                 enabled = state.previousEpisode != null && !state.loading && !state.switching) { Text("上一课") }
@@ -204,6 +215,8 @@ fun CourseScreen(target: CourseTarget, onBack: () -> Unit, onAuthorClick: (Long)
     }
     val images = state.detail?.images.orEmpty()
     if (imageIndex in images.indices) ReaderImageViewer(images, imageIndex, onDismiss = { imageIndex = -1 })
+    if (showPlaybackSettings) CoursePlaybackSettingsDialog(state, model::setPlaybackSpeed, model::setSleepTimer,
+        model::cancelSleepTimer, onDismiss = { showPlaybackSettings = false })
     if (showQualities && state.stream != null) AlertDialog(onDismissRequest = { showQualities = false },
         title = { Text("课程清晰度") },
         text = {

@@ -232,6 +232,7 @@ class AppContainer(context: Context) {
         com.qbili.data.repository.CourseRepository(api, network.cookieJar.loginState, network.json)
     }
     val courseProgressStore by lazy { com.qbili.data.local.CourseProgressStore(appContext) }
+    val coursePlaybackSettingsStore by lazy { com.qbili.data.local.CoursePlaybackSettingsStore(appContext) }
     fun saveCourseProgress(progress: com.qbili.domain.model.CourseProgress, onFailure: () -> Unit) {
         appScope.launch {
             runCatching { courseProgressStore.save(progress) }.onFailure {

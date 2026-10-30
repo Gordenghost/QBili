@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,12 +51,12 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
     onTogglePlay: () -> Unit, onSeekBy: (Long) -> Unit, onFullscreen: () -> Unit,
     onBack: () -> Unit, onResume: () -> Unit, onDismissResume: () -> Unit,
     onQuality: () -> Unit, onPreviousEpisode: () -> Unit, onNextEpisode: () -> Unit,
+    onPlaybackSettings: () -> Unit, onSpeedBoost: (Boolean) -> Unit,
     modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(true) }
     var interaction by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
     var pressed by remember { mutableStateOf(false) }
-    var speedBeforeBoost by remember { mutableStateOf(1f) }
     LaunchedEffect(visible, interaction, scrubbing, pressed) {
         if (visible && !scrubbing && !pressed) { delay(2_500); visible = false }
     }
@@ -69,8 +70,7 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
                 onSingleTap = { visible = !visible; interaction++ },
                 onTogglePlay = { onTogglePlay(); visible = true; interaction++ },
                 onSeekTo = { player.seekTo(it) }, onGestureStart = { visible = true; interaction++ },
-                onSpeedBoostStart = { speedBeforeBoost = player.playbackParameters.speed; player.setPlaybackSpeed(2f) },
-                onSpeedBoostEnd = { player.setPlaybackSpeed(speedBeforeBoost) }, modifier = Modifier.fillMaxSize())
+                onSpeedBoostStart = { onSpeedBoost(true) }, onSpeedBoostEnd = { onSpeedBoost(false) }, modifier = Modifier.fillMaxSize())
             if (visible) VideoPlayerControls(player,
                 isPlaying = state.requested && player.playbackState != Player.STATE_ENDED,
                 onTogglePlay = onTogglePlay, onSeekBy = onSeekBy, onSeekTo = { player.seekTo(it) },
@@ -94,9 +94,14 @@ internal fun CoursePlayerSurface(player: ExoPlayer, state: CourseViewModel.UiSta
                 Text(if (state.changingQuality) "切换中…" else state.stream.label, color = Color.White,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            IconButton(onClick = onPlaybackSettings) { Icon(Icons.Outlined.Settings, "课程播放设置", tint = Color.White) }
             IconButton(onClick = onFullscreen) { Icon(if (state.fullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
                 if (state.fullscreen) "退出全屏" else "全屏", tint = Color.White) }
         }
+        if (visible && (state.sleepRemainingSeconds > 0 || state.sleepTimerExpired)) Text(
+            if (state.sleepTimerExpired) "已定时暂停" else "${com.qbili.core.formatDuration(state.sleepRemainingSeconds)} 后暂停",
+            color = Color.White, modifier = Modifier.align(Alignment.TopEnd).padding(top = 50.dp, end = 12.dp)
+                .background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 6.dp, vertical = 2.dp))
         if (state.canResume) Row(Modifier.align(Alignment.CenterStart).padding(start = 8.dp)
             .background(Color.Black.copy(alpha = 0.65f)), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onResume) { Text("继续上次 ${com.qbili.core.formatDuration((state.resumePositionMs / 1_000).toInt())}", color = Color.White) }

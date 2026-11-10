@@ -12,7 +12,14 @@ data class DynamicPost(
     val images: List<String> = emptyList(),
     val opusId: String? = null,
     val articleId: Long? = null,
+    val original: DynamicPost? = null,
+    val originalUnavailable: Boolean = false,
 )
+
+val DynamicPost.linkedContent: DynamicPost
+    get() = original?.linkedContent ?: this
+
+val DynamicPost.isForward: Boolean get() = original != null || originalUnavailable
 
 /** 动态正文中的图片占位符与实际图片分开排版，避免标记夹在句子中间。 */
 fun formatDynamicText(text: String): String = text

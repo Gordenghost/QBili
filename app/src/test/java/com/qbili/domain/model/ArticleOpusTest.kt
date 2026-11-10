@@ -3,12 +3,86 @@ package com.qbili.domain.model
 import com.qbili.data.remote.dto.ArticleViewDto
 import com.qbili.data.remote.dto.BiliResponse
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArticleOpusTest {
+    @Test
+    fun `空文本段落保留换行而纯图片的空文本不产生未知内容`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":1,"text":{"nodes":[]},"pic":{"pics":[]}},
+            {"para_type":2,"text":{"nodes":[]},"pic":{"pics":[{"url":"//i0.hdslb.com/only.jpg"}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.startsWith("<p><br></p><figure>"))
+        assertFalse(rendered.html.contains("暂不支持"))
+    }
+
+    @Test
+    fun `文本段落的空图片标题分隔代码和列表字段不会吞掉文字`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":1,"heading":{"nodes":[]},"pic":{"pics":[]},"line":{},
+             "code":{"content":""},"list":{"items":[]},
+             "text":{"nodes":[{"word":{"words":"不能丢掉的正文","color":"#FFFFFF"}}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<p>不能丢掉的正文</p>"))
+        assertFalse(rendered.html.contains("<hr>"))
+        assertFalse(rendered.html.contains("color:#FFFFFF"))
+    }
+
+    @Test
+    fun `同一段落同时有文字与图片时两者都保留且主题黑白字不再隐形`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"text":{"nodes":[{"word":{"words":"图片说明","color":"#000000"}}]},
+             "pic":{"pics":[{"url":"//i0.hdslb.com/mixed.jpg"}]}},
+            {"text":{"nodes":[{"word":{"words":"彩色重点","color":"#fb7299"}}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<p>图片说明</p>"))
+        assertTrue(rendered.html.contains("https://i0.hdslb.com/mixed.jpg"))
+        assertTrue(rendered.html.indexOf("图片说明") < rendered.html.indexOf("mixed.jpg"))
+        assertTrue(rendered.html.contains("color:#fb7299"))
+    }
+
+    @Test
+    fun `完整图文包含标题引用列表代码表情和跳转不会丢失内容`() {
+        val paragraphs = Json.parseToJsonElement("""[
+            {"para_type":8,"heading":{"nodes":[{"word":{"words":"标题"}}]}},
+            {"para_type":4,"text":{"nodes":[{"word":{"words":"引用"}}]}},
+            {"para_type":6,"list":{"items":[{"order":2,"nodes":[{"word":{"words":"列表项"}}]}]}},
+            {"para_type":7,"code":{"content":"a < b"}},
+            {"para_type":3,"line":{}},
+            {"para_type":1,"text":{"nodes":[{"rich":{"type":"RICH_TEXT_NODE_TYPE_EMOJI","orig_text":"[doge]","emoji":{"url":"//i0.hdslb.com/doge.png"}}},{"rich":{"type":"RICH_TEXT_NODE_TYPE_AT","text":"@作者","rid":"42"}}]}},
+            {"para_type":2,"pic":{"pics":[{"url":"//article.biliimg.com/image.png"}]}}
+        ]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertTrue(rendered.complete)
+        assertTrue(rendered.html.contains("<h2>标题</h2>"))
+        assertTrue(rendered.html.contains("<blockquote>引用</blockquote>"))
+        assertTrue(rendered.html.contains("<ol start='2'><li>列表项</li></ol>"))
+        assertTrue(rendered.html.contains("<pre><code>a &lt; b</code></pre>"))
+        assertTrue(rendered.html.contains("class='reader-emoji'"))
+        assertTrue(rendered.html.contains("https://space.bilibili.com/42"))
+        assertEquals(listOf("https://article.biliimg.com/image.png"), readerContentImageUrls(rendered.html))
+    }
+
+    @Test
+    fun `不支持或缺失内容明确保留回退入口而非伪装完整阅读`() {
+        val paragraphs = Json.parseToJsonElement("""[{"para_type":99,"unknown":{}},{"pic":{"pics":[{"url":"javascript:alert(1)"}]}}]""") as JsonArray
+        val rendered = renderOpusParagraphs(paragraphs)
+        assertFalse(rendered.complete)
+        assertTrue(rendered.html.contains("暂不支持"))
+        assertFalse(rendered.html.contains("javascript:"))
+        assertFalse(renderOpusParagraphs(JsonArray(emptyList())).complete)
+    }
+
     @Test
     fun `新版专栏从 opus 的段落图片与字体信息生成正文`() {
         val response = Json { ignoreUnknownKeys = true }.decodeFromString<BiliResponse<ArticleViewDto>>(

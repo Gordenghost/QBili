@@ -8,6 +8,25 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class WatchHistoryTest {
+    @Test
+    fun `有历史时先正常播放并提供正确分P的非阻断续播入口`() {
+        val pages = listOf(VideoPage(30, 1, "第一部分", 60), VideoPage(20, 2, "第二部分", 60))
+        val start = videoPlaybackStart(pages, VideoResume(20, 1, 32_000))
+        assertEquals(1, start.pageIndex)
+        assertEquals(0L, start.positionMs)
+        assertEquals(VideoResume(20, 2, 32_000), start.resumeOffer)
+    }
+
+    @Test
+    fun `历史无效已看完或没有历史时不提供续播入口`() {
+        val pages = listOf(VideoPage(30, 1, "第一部分", 60))
+        assertEquals(VideoPlaybackStart(0, 0, null), videoPlaybackStart(pages, null))
+        assertNull(videoPlaybackStart(pages, VideoResume(99, 1, 32_000)).resumeOffer)
+        assertNull(videoPlaybackStart(pages, VideoResume(30, 1, 60_000)).resumeOffer)
+        assertNull(videoPlaybackStart(pages, VideoResume(30, 1, -1)).resumeOffer)
+        assertEquals(VideoPlaybackStart(0, 0, null), videoPlaybackStart(emptyList(), VideoResume(30, 1, 100)))
+    }
+
     private fun progress(aid: Long = 1, mid: Long = 0, time: Long = 100) = VideoProgress(
         mid, aid, "BV1", 20, 2, "第二部分", "标题", "", "作者", 32_000, 60_000, time)
 

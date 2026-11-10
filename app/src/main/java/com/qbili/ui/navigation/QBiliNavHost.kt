@@ -15,6 +15,9 @@ import com.qbili.ui.screen.favorite.FavoriteScreen
 import com.qbili.ui.screen.main.MainScreen
 import com.qbili.ui.screen.messages.MessagesScreen
 import com.qbili.ui.screen.season.SeasonScreen
+import com.qbili.ui.screen.course.CourseScreen
+import com.qbili.ui.screen.course.CourseEntryScreen
+import com.qbili.domain.model.CourseTarget
 import com.qbili.ui.screen.search.SearchScreen
 import com.qbili.ui.screen.settings.PushSettingsScreen
 import com.qbili.ui.screen.settings.PushFilterManagementScreen
@@ -27,7 +30,9 @@ import com.qbili.ui.screen.video.VideoPlayerScreen
 import com.qbili.ui.screen.watchlater.WatchLaterScreen
 import com.qbili.ui.screen.history.HistoryScreen
 import com.qbili.ui.screen.settings.PlaybackSettingsScreen
+import com.qbili.ui.screen.settings.ThemeSettingsScreen
 import com.qbili.domain.model.VideoResume
+import com.qbili.domain.model.MessageOpenTarget
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -50,10 +55,13 @@ fun QBiliNavHost(
                 onFavoritesClick = { navController.navigate(Route.FAVORITES) },
                 onWatchLaterClick = { navController.navigate(Route.WATCH_LATER) },
                 onHistoryClick = { navController.navigate(Route.HISTORY) },
+                onCoursesClick = { navController.navigate(Route.COURSES) },
+                onDownloadsClick = { navController.navigate(Route.DOWNLOADS) },
                 onMessagesClick = { navController.navigate(Route.MESSAGES) },
                 onSettingsClick = { navController.navigate(Route.SETTINGS) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
                 onArticleClick = { navController.navigate(Route.buildArticle(it)) },
+                onSeasonClick = { navController.navigate(Route.buildSeason(it)) },
             )
         }
 
@@ -66,6 +74,34 @@ fun QBiliNavHost(
                 onSeasonClick = { season -> navController.navigate(Route.buildSeason(season.seasonId)) },
                 onArticleClick = { article -> navController.navigate(Route.buildArticle(article.id)) },
             )
+        }
+        composable(Route.COURSES) {
+            CourseEntryScreen(onBack = { navController.popBackStack() },
+                onCourseClick = { navController.navigate(Route.buildCourse(it)) })
+        }
+        composable(Route.DOWNLOADS) {
+            com.qbili.ui.screen.download.OfflineDownloadsScreen(onBack = { navController.popBackStack() },
+                onPlay = { navController.navigate(Route.buildDownloadPlay(it)) })
+        }
+        composable(Route.DOWNLOAD_ADD, arguments = listOf(navArgument("downloadCid") { type = NavType.LongType; defaultValue = 0L })) { entry ->
+            com.qbili.ui.screen.download.OfflineDownloadAddScreen(
+                entry.arguments?.getString("downloadAid")?.toLongOrNull() ?: 0,
+                entry.arguments?.getLong("downloadCid") ?: 0,
+                onBack = { navController.popBackStack() }, onQueued = {
+                    navController.popBackStack(); navController.navigate(Route.DOWNLOADS)
+                })
+        }
+        composable(Route.DOWNLOAD_PLAY) { entry ->
+            com.qbili.ui.screen.download.OfflinePlayerScreen(entry.arguments?.getString("downloadId").orEmpty(),
+                onBack = { navController.popBackStack() })
+        }
+        composable(Route.COURSE) { entry ->
+            val id = entry.arguments?.getString("courseId")?.toLongOrNull() ?: 0
+            val target = if (entry.arguments?.getString("courseKind") == "ep") CourseTarget(episodeId = id)
+                else CourseTarget(seasonId = id)
+            CourseScreen(target, onBack = { navController.popBackStack() },
+                onAuthorClick = { navController.navigate(Route.buildSpace(it)) },
+                onLoginClick = { navController.navigate(Route.LOGIN) })
         }
 
         composable(Route.VIDEO, arguments = listOf(
@@ -84,6 +120,8 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onAuthorClick = { mid -> navController.navigate(Route.buildSpace(mid)) },
                 onCommentsClick = { aid -> navController.navigate(Route.buildComments(aid)) },
+                onDownloadClick = { aid, cid -> navController.navigate(Route.buildDownloadAdd(aid, cid)) },
+                onVideoClick = { video -> navController.navigate(Route.buildVideo(video.key)) },
             )
         }
 
@@ -95,6 +133,7 @@ fun QBiliNavHost(
                 type = type,
                 onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
+                onAuthorClick = { mid -> if (mid > 0) navController.navigate(Route.buildSpace(mid)) },
             )
         }
 
@@ -189,6 +228,18 @@ fun QBiliNavHost(
             MessagesScreen(
                 onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
+                onAuthorClick = { navController.navigate(Route.buildSpace(it)) },
+                onContentClick = { target ->
+                    val route = when (target) {
+                        is MessageOpenTarget.Video -> Route.buildVideo(target.id)
+                        is MessageOpenTarget.Article -> Route.buildArticle(target.id)
+                        is MessageOpenTarget.Opus -> Route.buildOpus(target.id)
+                        is MessageOpenTarget.Live -> Route.buildLive(target.roomId)
+                        is MessageOpenTarget.Season -> Route.buildSeason(target.id)
+                        is MessageOpenTarget.Space -> Route.buildSpace(target.mid)
+                    }
+                    navController.navigate(route)
+                },
             )
         }
 
@@ -199,6 +250,7 @@ fun QBiliNavHost(
                 onAboutClick = { navController.navigate(Route.ABOUT) },
                 onRecommendationSettingsClick = { navController.navigate(Route.RECOMMENDATION_SETTINGS) },
                 onPlaybackSettingsClick = { navController.navigate(Route.PLAYBACK_SETTINGS) },
+                onThemeSettingsClick = { navController.navigate(Route.THEME_SETTINGS) },
             )
         }
 
@@ -206,10 +258,18 @@ fun QBiliNavHost(
             AboutScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Route.THEME_SETTINGS) {
+            ThemeSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Route.HISTORY) {
             HistoryScreen(onBack = { navController.popBackStack() },
                 onLoginClick = { navController.navigate(Route.LOGIN) },
                 onVideoClick = { navController.navigate(Route.buildVideo(it.videoId, it.resume)) },
+                onArticleClick = { navController.navigate(Route.buildArticle(it)) },
+                onOpusClick = { navController.navigate(Route.buildOpus(it)) },
+                onLiveClick = { navController.navigate(Route.buildLive(it)) },
+                onCourseClick = { navController.navigate(Route.buildCourse(it)) },
                 onSeasonClick = { id, item -> navController.navigate(Route.buildSeason(id, item.episodeId,
                     if (item.completed) 0 else item.positionMs)) })
         }

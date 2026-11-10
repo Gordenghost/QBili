@@ -28,6 +28,8 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.WatchLater
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -40,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +74,8 @@ fun ProfileScreen(
     onFavoritesClick: () -> Unit,
     onWatchLaterClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onCoursesClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     onMessagesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -81,7 +86,12 @@ fun ProfileScreen(
 
     Scaffold(
         modifier = modifier,
-        topBar = { TopAppBar(title = { Text("我的") }) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        topBar = { TopAppBar(title = { Text("我的") }, colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+        )) },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -103,6 +113,10 @@ fun ProfileScreen(
             MenuRow(Icons.Outlined.WatchLater, "稍后再看", onWatchLaterClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.Outlined.History, "观看历史", onHistoryClick)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            MenuRow(Icons.Outlined.Download, "离线缓存", onDownloadsClick)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            MenuRow(Icons.Outlined.PlayArrow, "课程", onCoursesClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.AutoMirrored.Outlined.Message, "我的消息", onMessagesClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
@@ -180,7 +194,7 @@ private fun GuestHeader(onLoginClick: () -> Unit) {
             .fillMaxWidth()
             .padding(16.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
             modifier = Modifier
@@ -214,6 +228,7 @@ private fun UserHeader(profile: UserProfile, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -278,6 +293,7 @@ private fun MenuRow(icon: ImageVector, title: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,

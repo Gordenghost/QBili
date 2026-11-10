@@ -14,6 +14,8 @@ data class OpusDetail(
     val favoriteCount: Long = 0,
     val liked: Boolean = false,
     val favorited: Boolean = false,
+    val contentHtml: String = "",
+    val contentComplete: Boolean = false,
 ) {
     fun withLike(value: Boolean) = copy(
         liked = value,

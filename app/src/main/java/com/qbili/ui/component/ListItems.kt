@@ -53,6 +53,7 @@ fun VideoListItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Box(modifier = Modifier.width(150.dp).height(94.dp)) {
@@ -149,6 +150,7 @@ fun UserListItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -212,6 +214,7 @@ fun LiveRoomListItem(    item: LiveRoomItem,
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Box(modifier = Modifier.width(150.dp).height(94.dp)) {
@@ -288,6 +291,7 @@ fun SeasonListItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         AsyncImage(
@@ -395,6 +399,7 @@ fun ArticleListItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         if (item.cover.isNotBlank()) {

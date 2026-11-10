@@ -5,23 +5,108 @@ import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.dto.BiliResponse
 import com.qbili.data.remote.dto.DynamicFeedDto
 import com.qbili.data.remote.dto.OpusDetailDto
+import com.qbili.data.remote.dto.DynamicAuthorsDto
+import com.qbili.data.remote.dto.DynamicAuthorDto
+import com.qbili.domain.model.linkedContent
+import com.qbili.domain.model.isForward
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DynamicRepositoryTest {
     private val json = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun `转发保留两层作者正文和原视频导航而非拼接成自己的视频`() {
+        val post = json.parseToJsonElement("""{"id_str":"900","type":"DYNAMIC_TYPE_FORWARD","modules":{
+            "module_author":{"mid":42,"name":"转发者","face":"//forward.jpg"},
+            "module_dynamic":{"desc":{"text":"我的转发说明"}}},"orig":{
+            "id_str":"800","type":"DYNAMIC_TYPE_AV","modules":{
+            "module_author":{"mid":43,"name":"原作者","face":"//original.jpg"},
+            "module_dynamic":{"desc":{"text":"原动态正文"},"major":{"archive":{
+            "aid":8,"bvid":"BV1Origin","title":"原视频","cover":"//cover.jpg"}}}}}}""").toPostOrNull()!!
+        assertTrue(post.isForward)
+        assertEquals(42L, post.authorMid)
+        assertEquals("我的转发说明", post.text)
+        assertNull(post.video)
+        assertEquals("800", post.original?.id)
+        assertEquals(43L, post.original?.authorMid)
+        assertEquals("原动态正文", post.original?.text)
+        assertEquals("BV1Origin", post.linkedContent.video?.key)
+        assertEquals(43L, post.linkedContent.video?.authorMid)
+    }
+
+    @Test
+    fun `转发原图文保持原图文ID图片并只用原ID补正文`() = runBlocking {
+        val api = FakeApi().apply {
+            response = json.decodeFromString("""{"data":{"items":[{"id_str":"900","type":"DYNAMIC_TYPE_FORWARD",
+            "modules":{"module_author":{"mid":42,"name":"转发者"},"module_dynamic":{"desc":{"text":"转发说明"}}},
+            "orig":{"id_str":"800","type":"DYNAMIC_TYPE_ARTICLE","modules":{
+            "module_author":{"mid":43,"name":"原作者"},"module_dynamic":{"major":{}}}}}]}}""")
+            detailResponse = json.decodeFromString("""{"data":{"item":{"modules":[
+            {"module_content":{"paragraphs":[{"text":{"nodes":[{"word":{"words":"原图文正文"}}]}},
+            {"pic":{"pics":[{"url":"//picture.jpg"}]}}]}}]}}}""")
+        }
+        val post = DynamicRepository(api).following().posts.single()
+        assertEquals("转发说明", post.text)
+        assertNull(post.opusId)
+        assertEquals("800", post.linkedContent.opusId)
+        assertEquals("原图文正文", post.original?.text)
+        assertEquals(listOf("//picture.jpg"), post.original?.images)
+        assertEquals("800", api.receivedDetailId)
+        assertEquals(1, api.detailCalls)
+    }
+
+    @Test
+    fun `原动态删除或缺失保留转发说明与不可见标记`() {
+        listOf("", "\"orig\":{\"id_str\":\"8\",\"type\":\"DYNAMIC_TYPE_NONE\"},").forEach { original ->
+            val post = json.parseToJsonElement("""{"id_str":"9","type":"DYNAMIC_TYPE_FORWARD",$original
+            "modules":{"module_author":{"mid":42},"module_dynamic":{"desc":{"text":"转发说明"}}}}""").toPostOrNull()!!
+            assertNull(post.original)
+            assertTrue(post.originalUnavailable)
+            assertEquals("转发说明", post.text)
+            assertNull(post.linkedContent.video)
+        }
+    }
+
+    @Test
+    fun `多层转发有界且保留直接转发关系`() {
+        var source = """{"id_str":"1","modules":{"module_author":{"mid":1},"module_dynamic":{"desc":{"text":"原文"}}}}"""
+        (2..8).forEach { number ->
+            source = """{"id_str":"$number","type":"DYNAMIC_TYPE_FORWARD","modules":{"module_author":{"mid":$number}},"orig":$source}"""
+        }
+        val post = json.parseToJsonElement(source).toPostOrNull()!!
+        assertEquals("8", post.id)
+        assertEquals("7", post.original?.id)
+        assertTrue(post.linkedContent.originalUnavailable)
+        assertEquals("5", post.linkedContent.id)
+    }
 
     private class FakeApi : DynamicApi {
         var response = BiliResponse<DynamicFeedDto>(data = DynamicFeedDto())
         var receivedOffset: String? = null
         var receivedMid: Long? = null
         var detailCalls = 0
+        var receivedDetailId: String? = null
         var detailResponse = BiliResponse<OpusDetailDto>(data = OpusDetailDto())
+        var authorsResponse = BiliResponse(data = DynamicAuthorsDto())
+        var receivedAuthorsPage: Int? = null
+        var receivedAccountMid: Long? = null
+
+        override suspend fun followedAuthors(mid: Long, page: Int, pageSize: Int,
+            order: String): BiliResponse<DynamicAuthorsDto> {
+            assertEquals(50, pageSize)
+            assertEquals("desc", order)
+            receivedAccountMid = mid
+            receivedAuthorsPage = page
+            return authorsResponse
+        }
 
         override suspend fun following(type: String, timezoneOffset: Int, features: String,
             offset: String?): BiliResponse<DynamicFeedDto> {
@@ -42,8 +127,41 @@ class DynamicRepositoryTest {
         override suspend fun opusDetail(id: String, features: String): BiliResponse<OpusDetailDto> {
             assertEquals("htmlNewStyle,itemOpusStyle", features)
             detailCalls++
+            receivedDetailId = id
             return detailResponse
         }
+    }
+
+    @Test
+    fun `关注UP列表分页使用当前账号保留头像且不读取游客`() = runBlocking<Unit> {
+        val api = FakeApi().apply {
+            authorsResponse = BiliResponse(data = DynamicAuthorsDto(listOf(
+                DynamicAuthorDto(42, "作者", "//face.jpg"), DynamicAuthorDto(42, "重复", ""),
+                DynamicAuthorDto(0, "无效", "")), total = 51))
+        }
+        val repository = DynamicRepository(api)
+        val first = repository.followedAuthors(7, 1)
+        assertEquals(7L, api.receivedAccountMid)
+        assertEquals(1, api.receivedAuthorsPage)
+        assertEquals(1, first.authors.size)
+        assertEquals("//face.jpg", first.authors.single().face)
+        assertTrue(first.hasMore)
+        assertFalse(repository.followedAuthors(7, 2).hasMore)
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { repository.followedAuthors(0, 1) } }
+    }
+
+    @Test
+    fun `单UP空间分页只显示该作者但保留下一页游标`() = runBlocking {
+        val api = FakeApi().apply { response = json.decodeFromString("""{"code":0,"data":{
+            "has_more":true,"offset":"next","items":[
+            {"id_str":"123","modules":{"module_author":{"mid":42,"name":"所选作者"},
+             "module_dynamic":{"desc":{"text":"我的动态"}}}},
+            {"id_str":"124","modules":{"module_author":{"mid":43,"name":"其他作者"},
+             "module_dynamic":{"desc":{"text":"不应该出现"}}}}
+        ]}}""") }
+        val result = DynamicRepository(api).space(42)
+        assertEquals(listOf(42L), result.posts.map { it.authorMid })
+        assertEquals("next", result.next)
     }
 
     @Test
@@ -53,7 +171,7 @@ class DynamicRepositoryTest {
             {"id_str":"123","type":"DYNAMIC_TYPE_AV","modules":{
               "module_author":{"mid":42,"name":"UP主","face":"//face.jpg","pub_ts":100},
               "module_dynamic":{"desc":{"text":"投稿了"},"major":{"archive":
-              {"aid":9,"bvid":"BV1test","title":"视频","cover":"//cover.jpg"}}}}},
+              {"aid":9,"bvid":"BV1test","title":"视频","cover":"//cover.jpg","duration_text":"12:34"}}}}},
             {"id_str":"124","type":"DYNAMIC_TYPE_WORD","modules":{
               "module_author":{"mid":43,"name":"另一位"},
               "module_dynamic":{"desc":{"text":"一条文字动态"}}}}]}}""",
@@ -63,6 +181,7 @@ class DynamicRepositoryTest {
         assertEquals("next-page", page.next)
         assertEquals(2, page.posts.size)
         assertEquals("BV1test", page.posts.first().video?.key)
+        assertEquals(754, page.posts.first().video?.durationSeconds)
         assertEquals("投稿了", page.posts.first().text)
         assertEquals("一条文字动态", page.posts.last().text)
         assertNull(page.posts.last().video)

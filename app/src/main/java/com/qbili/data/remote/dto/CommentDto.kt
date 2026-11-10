@@ -33,7 +33,7 @@ data class CommentEntryDto(
         rootId = root,
         authorMid = member?.mid?.toLongOrNull() ?: 0,
         authorName = member?.uname.orEmpty(),
-        authorFace = member?.face.orEmpty(),
+        authorFace = member?.face?.takeIf { it.isNotBlank() } ?: member?.avatar.orEmpty(),
         message = content?.message.orEmpty(),
         emotes = content?.emote.orEmpty().mapValues { it.value.url },
         createdAt = ctime,
@@ -48,6 +48,7 @@ data class CommentMemberDto(
     val mid: String = "",
     val uname: String = "",
     val face: String = "",
+    val avatar: String = "",
 )
 
 @Serializable

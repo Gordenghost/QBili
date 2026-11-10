@@ -9,17 +9,17 @@ val BiliBlue = Color(0xFF00AEEC)
 
 val LightPrimary = BiliPink
 val LightOnPrimary = Color(0xFFFFFFFF)
-val LightPrimaryContainer = Color(0xFFFFD9E2)
-val LightOnPrimaryContainer = Color(0xFF3E001D)
+val LightPrimaryContainer = Color.White
+val LightOnPrimaryContainer = Color(0xFF18191C)
 val LightSecondary = BiliBlue
 val LightOnSecondary = Color(0xFFFFFFFF)
-val LightBackground = Color(0xFFFFFBFF)
-val LightOnBackground = Color(0xFF201A1B)
-val LightSurface = Color(0xFFFFFBFF)
-val LightOnSurface = Color(0xFF201A1B)
-val LightSurfaceVariant = Color(0xFFF3DDE0)
-val LightOnSurfaceVariant = Color(0xFF524345)
-val LightOutline = Color(0xFF847375)
+val LightBackground = Color(0xFFF5F5F5)
+val LightOnBackground = Color(0xFF18191C)
+val LightSurface = Color.White
+val LightOnSurface = Color(0xFF18191C)
+val LightSurfaceVariant = Color(0xFFF1F2F3)
+val LightOnSurfaceVariant = Color(0xFF61666D)
+val LightOutline = Color(0xFF9499A0)
 
 val DarkPrimary = Color(0xFFFFB1C6)
 val DarkOnPrimary = Color(0xFF64003220)

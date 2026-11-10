@@ -4,12 +4,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -27,8 +30,11 @@ import androidx.compose.ui.Modifier
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutClick: () -> Unit,
-    onRecommendationSettingsClick: () -> Unit, onPlaybackSettingsClick: () -> Unit) {
+    onRecommendationSettingsClick: () -> Unit, onPlaybackSettingsClick: () -> Unit,
+    onThemeSettingsClick: () -> Unit) {
     val source by LocalAppContainer.current.recommendationSettingsStore.source
+        .collectAsStateWithLifecycle(initialValue = null)
+    val theme by LocalAppContainer.current.themeSettingsStore.mode
         .collectAsStateWithLifecycle(initialValue = null)
     Scaffold(
         topBar = {
@@ -42,7 +48,15 @@ fun SettingsScreen(onBack: () -> Unit, onPushSettingsClick: () -> Unit, onAboutC
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            ListItem(
+                headlineContent = { Text("主题选择") },
+                supportingContent = { Text(theme?.let { "当前：${it.title}" } ?: "正在读取设置…") },
+                leadingContent = { Icon(Icons.Outlined.Palette, contentDescription = null) },
+                trailingContent = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable(onClick = onThemeSettingsClick),
+            )
+            HorizontalDivider()
             ListItem(headlineContent = { Text("播放与历史") },
                 supportingContent = { Text("断点续播与观看历史同步开关") },
                 leadingContent = { Icon(Icons.Outlined.Tune, contentDescription = null) },

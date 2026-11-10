@@ -36,6 +36,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.ReaderActionBar
 import com.qbili.ui.component.AuthorAvatar
+import com.qbili.ui.component.ReaderImageViewer
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +59,7 @@ fun ArticleScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val url = "https://www.bilibili.com/read/cv$id/"
+    var imagePreview by remember(id) { mutableStateOf<Pair<List<String>, Int>?>(null) }
 
     LaunchedEffect(id) { viewModel.show(id) }
     LaunchedEffect(cookies.isLoggedIn) {
@@ -120,7 +124,8 @@ fun ArticleScreen(
         val detail = state.detail
         when {
             detail != null -> ArticleWebView(detail, onAuthorClick, onArticleClick,
-                modifier = Modifier.fillMaxSize().padding(padding))
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onImageClick = { images, index -> imagePreview = images to index })
             state.error != null -> Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 verticalArrangement = Arrangement.Center,
@@ -141,4 +146,5 @@ fun ArticleScreen(
             ) { CircularProgressIndicator() }
         }
     }
+    imagePreview?.let { (images, index) -> ReaderImageViewer(images, index) { imagePreview = null } }
 }

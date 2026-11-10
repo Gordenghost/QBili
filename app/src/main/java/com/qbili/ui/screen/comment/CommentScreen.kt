@@ -68,10 +68,11 @@ import com.qbili.domain.model.segmentCommentText
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.AuthorAvatar
 import com.qbili.ui.util.biliAvatar
+import androidx.compose.foundation.clickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommentScreen(oid: Long, type: Int, onBack: () -> Unit, onLoginClick: () -> Unit) {
+fun CommentScreen(oid: Long, type: Int, onBack: () -> Unit, onLoginClick: () -> Unit, onAuthorClick: (Long) -> Unit) {
     val container = LocalAppContainer.current
     val viewModel: CommentViewModel = viewModel(
         factory = remember(container) { CommentViewModel.factory(container) },
@@ -184,6 +185,7 @@ fun CommentScreen(oid: Long, type: Int, onBack: () -> Unit, onLoginClick: () -> 
                     comment = comment,
                     onReply = viewModel::replyTo,
                     onOpenReplies = viewModel::openReplies,
+                    onAuthorClick = onAuthorClick,
                 )
             }
             if (state.loadingMore) {
@@ -229,7 +231,13 @@ fun CommentScreen(oid: Long, type: Int, onBack: () -> Unit, onLoginClick: () -> 
                     .padding(horizontal = 16.dp),
             ) {
                 Text("${root.replyCount} 条回复", style = MaterialTheme.typography.titleLarge)
-                Text(root.authorName, style = MaterialTheme.typography.labelMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AuthorAvatar(root.authorFace, root.authorName, 36.dp,
+                        Modifier.clickable(enabled = root.authorMid > 0) { viewModel.closeReplies(); onAuthorClick(root.authorMid) })
+                    Spacer(Modifier.width(8.dp))
+                    Text(root.authorName, style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.clickable(enabled = root.authorMid > 0) { viewModel.closeReplies(); onAuthorClick(root.authorMid) })
+                }
                 CommentText(root.message, root.emotes, Modifier.padding(vertical = 8.dp))
                 LazyColumn(
                     modifier = Modifier.weight(1f, fill = false),
@@ -244,6 +252,7 @@ fun CommentScreen(oid: Long, type: Int, onBack: () -> Unit, onLoginClick: () -> 
                                 viewModel.closeReplies()
                             },
                             onOpenReplies = {},
+                            onAuthorClick = { viewModel.closeReplies(); onAuthorClick(it) },
                             showRepliesLink = false,
                         )
                     }
@@ -272,15 +281,18 @@ private fun CommentCard(
     comment: VideoComment,
     onReply: (VideoComment) -> Unit,
     onOpenReplies: (VideoComment) -> Unit,
+    onAuthorClick: (Long) -> Unit,
     showRepliesLink: Boolean = true,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AuthorAvatar(comment.authorFace, comment.authorName, 36.dp)
+                AuthorAvatar(comment.authorFace, comment.authorName, 36.dp,
+                    Modifier.clickable(enabled = comment.authorMid > 0) { onAuthorClick(comment.authorMid) })
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(comment.authorName, style = MaterialTheme.typography.labelMedium)
+                    Text(comment.authorName, style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.clickable(enabled = comment.authorMid > 0) { onAuthorClick(comment.authorMid) })
                     Text(
                         formatRelativeTime(comment.createdAt),
                         style = MaterialTheme.typography.labelSmall,
@@ -302,10 +314,12 @@ private fun CommentCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AuthorAvatar(reply.authorFace, reply.authorName, 28.dp)
+                    AuthorAvatar(reply.authorFace, reply.authorName, 28.dp,
+                        Modifier.clickable(enabled = reply.authorMid > 0) { onAuthorClick(reply.authorMid) })
                     Spacer(Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(reply.authorName, style = MaterialTheme.typography.labelSmall)
+                        Text(reply.authorName, style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable(enabled = reply.authorMid > 0) { onAuthorClick(reply.authorMid) })
                         CommentText(reply.message, reply.emotes, maxLines = 2)
                     }
                     TextButton(onClick = { onReply(reply) }) { Text("回复") }

@@ -1,14 +1,18 @@
 package com.qbili.di
 
+import com.qbili.data.remote.dto.requireData
+
 import com.qbili.data.local.PlaybackSettingsStore
 import com.qbili.data.local.VideoProgressStore
 import com.qbili.data.remote.api.HistoryApi
 import com.qbili.data.repository.HistoryRepository
+import com.qbili.data.repository.ReaderImageRepository
 import com.qbili.domain.model.VideoProgress
 import com.qbili.data.remote.cookie.LoginCookies
 import okhttp3.CookieJar
 
 import android.content.Context
+import com.qbili.data.local.ThemeSettingsStore
 import com.qbili.data.local.AccessTokenStore
 import com.qbili.data.local.DeviceIdStore
 import com.qbili.data.local.RecommendationFilterStore
@@ -159,6 +163,7 @@ class AppContainer(context: Context) {
             blockedAuthors = { accountBlacklistRepository.blockedAuthors() }, videoApi = videoApi)
     }
     val articleRepository: ArticleRepository by lazy { ArticleRepository(articleApi) }
+    val readerImageRepository by lazy { ReaderImageRepository(appContext, network.imageClient) }
     val dynamicRepository: DynamicRepository by lazy { DynamicRepository(dynamicApi) }
     val liveRepository: LiveRepository by lazy { LiveRepository(liveApi) }
     val spaceRepository: SpaceRepository by lazy { SpaceRepository(spaceApi) }
@@ -178,8 +183,22 @@ class AppContainer(context: Context) {
         )
     }
     val videoRepository: VideoRepository by lazy { VideoRepository(videoApi, playurlApi) }
+    val offlineVideoRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
+            .retryOnConnectionFailure(false).followRedirects(false).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.OfflineVideoApi::class.java)
+        com.qbili.data.repository.OfflineVideoRepository(api, network.cookieJar.loginState, network.json)
+    }
+    val offlineDownloads by lazy {
+        com.qbili.data.download.OfflineDownloads(
+            com.qbili.data.local.OfflineDownloadStore(java.io.File(appContext.filesDir, "offline_videos")),
+            network.cookieJar.loginState, offlineVideoRepository, appScope,
+            networkAllowed = { com.qbili.data.download.OfflineDownloadService.networkAvailable(appContext) })
+    }
     val videoProgressStore by lazy { VideoProgressStore(appContext) }
     val playbackSettingsStore by lazy { PlaybackSettingsStore(appContext) }
+    val themeSettingsStore by lazy { ThemeSettingsStore(appContext) }
     val historyRepository by lazy {
         val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
         val api = network.apiRetrofit.newBuilder().client(client).build().create(HistoryApi::class.java)
@@ -213,11 +232,43 @@ class AppContainer(context: Context) {
         }
     }
     val danmakuRepository: DanmakuRepository by lazy { DanmakuRepository(videoApi) }
+    val relatedVideoRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.RelatedVideoApi::class.java)
+        com.qbili.data.repository.RelatedVideoRepository(api, network.cookieJar.loginState, network.json)
+    }
+    val courseRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.CourseApi::class.java)
+        com.qbili.data.repository.CourseRepository(api, network.cookieJar.loginState, network.json)
+    }
+    val courseProgressStore by lazy { com.qbili.data.local.CourseProgressStore(appContext) }
+    val coursePlaybackSettingsStore by lazy { com.qbili.data.local.CoursePlaybackSettingsStore(appContext) }
+    fun saveCourseProgress(progress: com.qbili.domain.model.CourseProgress, onFailure: () -> Unit) {
+        appScope.launch {
+            runCatching { courseProgressStore.save(progress) }.onFailure {
+                QBiliLog.w("CourseProgress", "保存课程记录失败")
+                onFailure()
+            }
+        }
+    }
+    val danmakuPostRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
+            .retryOnConnectionFailure(false).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.DanmakuPostApi::class.java)
+        com.qbili.data.repository.DanmakuPostRepository(api, network.cookieJar.loginState)
+    }
     val interactionRepository: InteractionRepository by lazy {
         InteractionRepository(interactionApi, appInteractionApi, accessTokenStore)
     }
     val commentRepository: CommentRepository by lazy { CommentRepository(commentApi) }
-    val messageRepository: MessageRepository by lazy { MessageRepository(messageApi) }
+    val messageRepository: MessageRepository by lazy { MessageRepository(messageApi) { mid ->
+        val card = spaceApi.card(mid).requireData().card
+        card?.let { com.qbili.domain.model.MessageContact(it.name, it.face) }
+    } }
     val opusInteractionRepository: OpusInteractionRepository by lazy {
         OpusInteractionRepository(opusActionApi) { network.cookieJar.csrf() }
     }

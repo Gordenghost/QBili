@@ -2,10 +2,19 @@ package com.qbili.data.remote.api
 
 import com.qbili.data.remote.dto.BiliResponse
 import com.qbili.data.remote.dto.DynamicFeedDto
+import com.qbili.data.remote.dto.DynamicAuthorsDto
 import retrofit2.http.GET
 import retrofit2.http.Query
 
 interface DynamicApi {
+    @GET("x/relation/followings")
+    suspend fun followedAuthors(
+        @Query("vmid") mid: Long,
+        @Query("pn") page: Int,
+        @Query("ps") pageSize: Int,
+        @Query("order") order: String,
+    ): BiliResponse<DynamicAuthorsDto>
+
     @GET("x/polymer/web-dynamic/v1/feed/all")
     suspend fun following(
         @Query("type") type: String,

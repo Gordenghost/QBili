@@ -49,6 +49,10 @@ import com.qbili.domain.model.OpusDetail
 import com.qbili.ui.LocalAppContainer
 import com.qbili.ui.component.ReaderActionBar
 import com.qbili.ui.component.AuthorAvatar
+import com.qbili.ui.component.ReaderImageViewer
+import com.qbili.ui.screen.article.ArticleWebView
+import com.qbili.domain.model.ArticleDetail
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -74,6 +78,7 @@ fun OpusScreen(
     var retry by remember(id) { mutableIntStateOf(0) }
     var busy by remember(id) { mutableStateOf(false) }
     var feedback by remember(id) { mutableStateOf<String?>(null) }
+    var imagePreview by remember(id) { mutableStateOf<Pair<List<String>, Int>?>(null) }
     LaunchedEffect(id, retry) {
         error = null
         try {
@@ -84,7 +89,7 @@ fun OpusScreen(
             error = cause.friendlyMessage()
         }
     }
-    LaunchedEffect(cookies.isLoggedIn) {
+    LaunchedEffect(cookies.mid, cookies.isLoggedIn) {
         if (detail != null) retry++
     }
     LaunchedEffect(feedback) {
@@ -132,7 +137,20 @@ fun OpusScreen(
         }
     }
     Scaffold(topBar = {
-        TopAppBar(title = { Text("图文详情") }, navigationIcon = {
+        TopAppBar(title = { Text("图文详情") }, actions = {
+            detail?.let { opus ->
+                if (opus.authorMid > 0) TextButton(onClick = { onAuthorClick(opus.authorMid) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AuthorAvatar(opus.authorFace, opus.author, 28.dp)
+                        Spacer(Modifier.width(4.dp))
+                        Text("作者")
+                    }
+                }
+                if (opus.commentType == 12 && opus.commentOid > 0) {
+                    TextButton(onClick = { onArticleClick(opus.commentOid) }) { Text("专栏") }
+                }
+            }
+        }, navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
@@ -162,7 +180,21 @@ fun OpusScreen(
             )
         }
     }) { padding ->
-        if (detail == null && error == null) {
+        val opus = detail
+        if (opus != null && opus.contentHtml.isNotBlank()) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                ArticleWebView(
+                    ArticleDetail(opus.commentOid, opus.title, opus.author, opus.authorMid, opus.contentHtml,
+                        0, 0, opus.authorFace), onAuthorClick, onArticleClick,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    onImageClick = { images, index -> imagePreview = images to index },
+                    sourceUrl = "https://www.bilibili.com/opus/$id",
+                )
+                if (!opus.contentComplete) TextButton(onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.bilibili.com/opus/$id"))) }
+                }) { Text("部分内容暂不支持，在 B站打开完整图文") }
+            }
+        } else if (detail == null && error == null) {
             CircularProgressIndicator(modifier = Modifier.padding(padding).padding(24.dp))
         } else {
             LazyColumn(
@@ -195,7 +227,10 @@ fun OpusScreen(
                             is OpusBlock.Picture -> AsyncImage(
                                 model = normalizeUrl(block.url), contentDescription = "图文图片",
                                 contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    val images = opus.blocks.filterIsInstance<OpusBlock.Picture>().map { it.url }
+                                    imagePreview = images to images.indexOf(block.url)
+                                },
                             )
                         }
                     }
@@ -207,7 +242,7 @@ fun OpusScreen(
                         Button(onClick = { retry++ }) { Text("重试加载") }
                     }
                 }
-                item {
+                if (detail?.contentComplete != true) item {
                     Button(onClick = {
                         if (id.all(Char::isDigit)) {
                             context.startActivity(Intent(Intent.ACTION_VIEW,
@@ -218,4 +253,5 @@ fun OpusScreen(
             }
         }
     }
+    imagePreview?.let { (images, index) -> ReaderImageViewer(images, index) { imagePreview = null } }
 }

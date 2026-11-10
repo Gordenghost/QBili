@@ -28,6 +28,7 @@ data class HistoryItemDto(
     @SerialName("view_at") val viewAt: Long = 0,
     val progress: Long = 0,
     val duration: Int = 0,
+    val uri: String = "",
 )
 
 @Serializable

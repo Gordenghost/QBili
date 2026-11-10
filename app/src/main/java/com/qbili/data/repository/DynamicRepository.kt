@@ -1,9 +1,13 @@
 package com.qbili.data.repository
 
+import com.qbili.core.parseDurationText
+import com.qbili.domain.model.DynamicAuthor
+
 import com.qbili.data.remote.api.DynamicApi
 import com.qbili.data.remote.dto.requireData
 import com.qbili.data.remote.dto.DynamicFeedDto
 import com.qbili.domain.model.DynamicPost
+import com.qbili.domain.model.linkedContent
 import com.qbili.domain.model.OpusBlock
 import com.qbili.domain.model.OpusDetail
 import com.qbili.domain.model.VideoItem
@@ -24,8 +28,19 @@ class DynamicRepository(private val api: DynamicApi) {
 
     suspend fun space(mid: Long, offset: String? = null): DynamicPage {
         require(mid > 0)
-        return api.space(mid, OPUS_FEATURE, offset).requireData().toPage(offset)
+        val page = api.space(mid, OPUS_FEATURE, offset).requireData().toPage(offset)
+        return page.copy(posts = page.posts.filter { it.authorMid == mid })
     }
+
+    suspend fun followedAuthors(mid: Long, page: Int): AuthorPage {
+        require(mid > 0 && page > 0)
+        val data = api.followedAuthors(mid, page, 50, "desc").requireData()
+        return AuthorPage(data.list.filter { it.mid > 0 }.distinctBy { it.mid }
+            .map { DynamicAuthor(it.mid, it.uname, it.face) },
+            data.list.isNotEmpty() && page.toLong() * 50 < data.total)
+    }
+
+    data class AuthorPage(val authors: List<DynamicAuthor>, val hasMore: Boolean)
 
     suspend fun opusDetail(id: String): OpusDetail {
         require(id.isNotBlank() && id.all(Char::isDigit))
@@ -36,10 +51,11 @@ class DynamicRepository(private val api: DynamicApi) {
         var hydrated = 0
         var detailAvailable = true
         val posts = items.orEmpty().mapNotNull { entry ->
-            val post = entry.toPostOrNull() ?: return@mapNotNull null
+            val root = entry.toPostOrNull() ?: return@mapNotNull null
+            val post = root.linkedContent
             if (post.opusId == null || post.text.isNotBlank() || post.images.isNotEmpty() ||
                 hydrated >= 3 || !detailAvailable) {
-                return@mapNotNull post.withContentFallback()
+                return@mapNotNull root.withContentFallback()
             }
             hydrated++
             val detail = try {
@@ -52,13 +68,14 @@ class DynamicRepository(private val api: DynamicApi) {
             } catch (_: Exception) {
                 null
             }
-            post.copy(
+            val hydratedPost = post.copy(
                 text = detail?.blocks?.filterIsInstance<OpusBlock.Paragraph>()
                     ?.joinToString("\n") { it.text }?.ifBlank { detail.title }
                     ?: detail?.title.orEmpty(),
                 images = detail?.blocks?.filterIsInstance<OpusBlock.Picture>()
                     ?.map { it.url }.orEmpty(),
             ).withContentFallback()
+            root.replaceLinkedContent(hydratedPost)
         }
         return DynamicPage(
             posts = posts,
@@ -74,20 +91,33 @@ class DynamicRepository(private val api: DynamicApi) {
 }
 
 private fun DynamicPost.withContentFallback(): DynamicPost =
-    if (opusId != null && text.isBlank() && images.isEmpty()) copy(text = "图文内容暂未返回，点击查看详情")
+    if (original != null) copy(original = original.withContentFallback())
+    else if (opusId != null && text.isBlank() && images.isEmpty()) copy(text = "图文内容暂未返回，点击查看详情")
     else this
 
-internal fun JsonElement.toPostOrNull(): DynamicPost? {
+private fun DynamicPost.replaceLinkedContent(content: DynamicPost): DynamicPost =
+    original?.let { copy(original = it.replaceLinkedContent(content)) } ?: content
+
+internal fun JsonElement.toPostOrNull(): DynamicPost? = parseDynamicPost(0)
+
+private fun JsonElement.parseDynamicPost(depth: Int): DynamicPost? {
     val entry = this as? JsonObject ?: return null
+    if (entry.text("type") == "DYNAMIC_TYPE_NONE") return null
     val id = entry.text("id_str")?.takeIf { it.isNotBlank() } ?: return null
     val author = entry.obj("modules")?.obj("module_author")
-    val authorMid = author?.text("mid")?.toLongOrNull() ?: return null
+    val authorMid = author?.text("mid")?.toLongOrNull()?.takeIf { it > 0 } ?: return null
     val ownContent = entry.obj("modules")?.obj("module_dynamic")
     val ownText = ownContent?.obj("desc")?.text("text").orEmpty()
     val original = entry.obj("orig")
-    val originalContent = original?.obj("modules")?.obj("module_dynamic")
-    val originalText = originalContent?.obj("desc")?.text("text").orEmpty()
-    val major = (originalContent ?: ownContent)?.obj("major")
+    val forwarding = entry.text("type") == "DYNAMIC_TYPE_FORWARD" || original != null
+    if (forwarding) {
+        val forwardedPost = original?.takeIf { depth < 3 }?.parseDynamicPost(depth + 1)
+        return DynamicPost(id = id, authorMid = authorMid, authorName = author.text("name").orEmpty(),
+            authorFace = author.text("face").orEmpty(), text = ownText, cover = "",
+            publishedAt = author.text("pub_ts")?.toLongOrNull() ?: 0,
+            original = forwardedPost, originalUnavailable = forwardedPost == null)
+    }
+    val major = ownContent?.obj("major")
     val archive = major?.obj("archive")
     val bvid = archive?.text("bvid").orEmpty()
     val aid = archive?.text("aid")?.toLongOrNull() ?: 0
@@ -106,20 +136,16 @@ internal fun JsonElement.toPostOrNull(): DynamicPost? {
     val cover = archive?.text("cover") ?: images.firstOrNull().orEmpty()
     val video = if (bvid.isNotBlank() || aid > 0) VideoItem(
         aid = aid, bvid = bvid, title = title, cover = cover,
-        authorMid = original?.obj("modules")?.obj("module_author")?.text("mid")?.toLongOrNull()
-            ?: authorMid,
-        authorName = original?.obj("modules")?.obj("module_author")?.text("name")
-            ?: author.text("name").orEmpty(),
+        durationSeconds = parseDurationText(archive?.text("duration_text") ?: archive?.text("duration")),
+        authorMid = authorMid,
+        authorName = author.text("name").orEmpty(),
     ) else null
     return DynamicPost(
         id = id,
         authorMid = authorMid,
         authorName = author.text("name").orEmpty(),
         authorFace = author.text("face").orEmpty(),
-        text = listOf(
-            ownText.ifBlank { ownContent?.obj("major")?.obj("opus")?.obj("summary")?.text("text").orEmpty() },
-            originalText.ifBlank { originalContent?.obj("major")?.obj("opus")?.obj("summary")?.text("text").orEmpty() },
-        ).filter { it.isNotBlank() }.joinToString("\n")
+        text = ownText.ifBlank { opus?.obj("summary")?.text("text").orEmpty() }
             .ifBlank { opus?.text("title") ?: article?.text("title") ?: title },
         cover = cover,
         publishedAt = author.text("pub_ts")?.toLongOrNull() ?: 0,

@@ -55,7 +55,19 @@ object Route {
     const val FAVORITES = "favorites"
     const val WATCH_LATER = "watchLater"
     const val HISTORY = "history"
+    const val COURSES = "courses"
+    const val DOWNLOADS = "downloads"
+    const val DOWNLOAD_ADD = "downloads/add/{downloadAid}?cid={downloadCid}"
+    const val DOWNLOAD_PLAY = "downloads/play/{downloadId}"
+    fun buildDownloadAdd(aid: Long, cid: Long) = "downloads/add/$aid?cid=$cid"
+    fun buildDownloadPlay(id: String) = "downloads/play/$id"
+    const val COURSE = "course/{courseKind}/{courseId}"
+    fun buildCourse(target: com.qbili.domain.model.CourseTarget): String {
+        require(target.valid)
+        return if (target.episodeId > 0) "course/ep/${target.episodeId}" else "course/ss/${target.seasonId}"
+    }
     const val PLAYBACK_SETTINGS = "settings/playback"
+    const val THEME_SETTINGS = "settings/theme"
     const val SETTINGS = "settings"
     const val ABOUT = "settings/about"
     const val RECOMMENDATION_SETTINGS = "settings/recommendation"

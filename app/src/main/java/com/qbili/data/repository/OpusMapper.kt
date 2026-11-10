@@ -3,6 +3,8 @@ package com.qbili.data.repository
 import com.qbili.data.remote.dto.OpusDetailDto
 import com.qbili.domain.model.OpusBlock
 import com.qbili.domain.model.OpusDetail
+import com.qbili.domain.model.renderOpusParagraphs
+import com.qbili.core.BiliApiException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -10,8 +12,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
-    val item = item as? JsonObject
-    val modules = item?.get("modules") as? JsonArray
+    val item = item as? JsonObject ?: throw BiliApiException(0, "图文详情缺少正文数据")
+    val modules = item["modules"] as? JsonArray
+    val contents = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_content") }
+    val rendered = contents.map { renderOpusParagraphs(it["paragraphs"] as? JsonArray ?: JsonArray(emptyList())) }
     val blocks = buildList {
         modules.orEmpty().forEach { module ->
             val moduleData = module as? JsonObject ?: return@forEach
@@ -21,6 +25,8 @@ internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
                 val text = (element.objectValue("text")?.get("nodes") as? JsonArray).orEmpty()
                     .joinToString("") { node ->
                         (node as? JsonObject)?.objectValue("word")?.stringValue("words")
+                            ?: (node as? JsonObject)?.objectValue("rich")?.stringValue("text")
+                            ?: (node as? JsonObject)?.objectValue("rich")?.stringValue("orig_text")
                             ?: (node as? JsonObject)?.stringValue("text")
                             ?: ""
                     }.ifBlank { element.stringValue("text").orEmpty() }
@@ -37,12 +43,12 @@ internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
         .firstOrNull()?.stringValue("text")
         ?: modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_top") }
             .firstOrNull()?.stringValue("title")
-        ?: item?.stringValue("title").orEmpty()
+        ?: item.stringValue("title").orEmpty()
     val author = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_author") }
         .firstOrNull()?.stringValue("name").orEmpty()
     val authorMid = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_author") }
         .firstOrNull()?.stringValue("mid")?.toLongOrNull() ?: 0
-    val basic = item?.objectValue("basic")
+    val basic = item.objectValue("basic")
     val stats = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_stat") }
         .firstOrNull()
     return OpusDetail(
@@ -50,6 +56,8 @@ internal fun OpusDetailDto.toOpusDetail(id: String): OpusDetail {
         title = title,
         author = author,
         blocks = blocks,
+        contentHtml = rendered.joinToString("") { it.html },
+        contentComplete = rendered.isNotEmpty() && rendered.all { it.complete },
         authorMid = authorMid,
         authorFace = modules.orEmpty().mapNotNull { (it as? JsonObject)?.objectValue("module_author") }
             .firstOrNull()?.stringValue("face").orEmpty(),

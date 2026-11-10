@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.WatchLater
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -74,6 +75,7 @@ fun ProfileScreen(
     onWatchLaterClick: () -> Unit,
     onHistoryClick: () -> Unit,
     onCoursesClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     onMessagesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -111,6 +113,8 @@ fun ProfileScreen(
             MenuRow(Icons.Outlined.WatchLater, "稍后再看", onWatchLaterClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.Outlined.History, "观看历史", onHistoryClick)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            MenuRow(Icons.Outlined.Download, "离线缓存", onDownloadsClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             MenuRow(Icons.Outlined.PlayArrow, "课程", onCoursesClick)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)

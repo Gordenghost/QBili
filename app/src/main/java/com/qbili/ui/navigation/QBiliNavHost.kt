@@ -56,6 +56,7 @@ fun QBiliNavHost(
                 onWatchLaterClick = { navController.navigate(Route.WATCH_LATER) },
                 onHistoryClick = { navController.navigate(Route.HISTORY) },
                 onCoursesClick = { navController.navigate(Route.COURSES) },
+                onDownloadsClick = { navController.navigate(Route.DOWNLOADS) },
                 onMessagesClick = { navController.navigate(Route.MESSAGES) },
                 onSettingsClick = { navController.navigate(Route.SETTINGS) },
                 onOpusClick = { navController.navigate(Route.buildOpus(it)) },
@@ -77,6 +78,22 @@ fun QBiliNavHost(
         composable(Route.COURSES) {
             CourseEntryScreen(onBack = { navController.popBackStack() },
                 onCourseClick = { navController.navigate(Route.buildCourse(it)) })
+        }
+        composable(Route.DOWNLOADS) {
+            com.qbili.ui.screen.download.OfflineDownloadsScreen(onBack = { navController.popBackStack() },
+                onPlay = { navController.navigate(Route.buildDownloadPlay(it)) })
+        }
+        composable(Route.DOWNLOAD_ADD, arguments = listOf(navArgument("downloadCid") { type = NavType.LongType; defaultValue = 0L })) { entry ->
+            com.qbili.ui.screen.download.OfflineDownloadAddScreen(
+                entry.arguments?.getString("downloadAid")?.toLongOrNull() ?: 0,
+                entry.arguments?.getLong("downloadCid") ?: 0,
+                onBack = { navController.popBackStack() }, onQueued = {
+                    navController.popBackStack(); navController.navigate(Route.DOWNLOADS)
+                })
+        }
+        composable(Route.DOWNLOAD_PLAY) { entry ->
+            com.qbili.ui.screen.download.OfflinePlayerScreen(entry.arguments?.getString("downloadId").orEmpty(),
+                onBack = { navController.popBackStack() })
         }
         composable(Route.COURSE) { entry ->
             val id = entry.arguments?.getString("courseId")?.toLongOrNull() ?: 0
@@ -103,6 +120,7 @@ fun QBiliNavHost(
                 onBack = { navController.popBackStack() },
                 onAuthorClick = { mid -> navController.navigate(Route.buildSpace(mid)) },
                 onCommentsClick = { aid -> navController.navigate(Route.buildComments(aid)) },
+                onDownloadClick = { aid, cid -> navController.navigate(Route.buildDownloadAdd(aid, cid)) },
                 onVideoClick = { video -> navController.navigate(Route.buildVideo(video.key)) },
             )
         }

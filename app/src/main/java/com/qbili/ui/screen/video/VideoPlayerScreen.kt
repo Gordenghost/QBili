@@ -133,6 +133,7 @@ fun VideoPlayerScreen(
     onAuthorClick: (Long) -> Unit,
     onCommentsClick: (Long) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onDownloadClick: (Long, Long) -> Unit,
     initialResume: VideoResume? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -227,6 +228,13 @@ fun VideoPlayerScreen(
         )
 
         if (!state.fullscreen) {
+            state.detail?.let { detail -> state.currentPage?.let { page ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { viewModel.onLeave(); onDownloadClick(detail.aid, page.cid) }, enabled = !state.switching) {
+                        Text("离线缓存 · 当前分 P")
+                    }
+                }
+            } }
             when {
                 state.loading -> FullScreenLoading()
 

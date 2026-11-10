@@ -183,6 +183,19 @@ class AppContainer(context: Context) {
         )
     }
     val videoRepository: VideoRepository by lazy { VideoRepository(videoApi, playurlApi) }
+    val offlineVideoRepository by lazy {
+        val client = network.client.newBuilder().cookieJar(CookieJar.NO_COOKIES)
+            .retryOnConnectionFailure(false).followRedirects(false).build()
+        val api = network.apiRetrofit.newBuilder().client(client).build()
+            .create(com.qbili.data.remote.api.OfflineVideoApi::class.java)
+        com.qbili.data.repository.OfflineVideoRepository(api, network.cookieJar.loginState, network.json)
+    }
+    val offlineDownloads by lazy {
+        com.qbili.data.download.OfflineDownloads(
+            com.qbili.data.local.OfflineDownloadStore(java.io.File(appContext.filesDir, "offline_videos")),
+            network.cookieJar.loginState, offlineVideoRepository, appScope,
+            networkAllowed = { com.qbili.data.download.OfflineDownloadService.networkAvailable(appContext) })
+    }
     val videoProgressStore by lazy { VideoProgressStore(appContext) }
     val playbackSettingsStore by lazy { PlaybackSettingsStore(appContext) }
     val themeSettingsStore by lazy { ThemeSettingsStore(appContext) }
